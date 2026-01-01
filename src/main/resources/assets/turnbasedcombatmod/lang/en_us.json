@@ -1,0 +1,13 @@
+{
+  "itemGroup.turnbasedcombatmod": "Example Mod Tab",
+  "block.turnbasedcombatmod.example_block": "Example Block",
+  "item.turnbasedcombatmod.example_item": "Example Item",
+
+  "turnbasedcombatmod.configuration.title": "Turn Based Combat Mod Configs",
+  "turnbasedcombatmod.configuration.section.turnbasedcombatmod.common.toml": "Turn Based Combat Mod Configs",
+  "turnbasedcombatmod.configuration.section.turnbasedcombatmod.common.toml.title": "Turn Based Combat Mod Configs",
+  "turnbasedcombatmod.configuration.items": "Item List",
+  "turnbasedcombatmod.configuration.logDirtBlock": "Log Dirt Block",
+  "turnbasedcombatmod.configuration.magicNumberIntroduction": "Magic Number Text",
+  "turnbasedcombatmod.configuration.magicNumber": "Magic Number"
+}
