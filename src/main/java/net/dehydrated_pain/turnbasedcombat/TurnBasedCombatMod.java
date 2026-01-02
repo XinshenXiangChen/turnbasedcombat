@@ -1,5 +1,6 @@
 package net.dehydrated_pain.turnbasedcombat;
 
+import net.dehydrated_pain.turnbasedcombat.items.ModItems;
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
@@ -43,8 +44,13 @@ public class TurnBasedCombatMod {
     // FML will recognize some parameter types like IEventBus or ModContainer and pass them in automatically.
     public TurnBasedCombatMod(IEventBus modEventBus, ModContainer modContainer) {
 
+        modEventBus.addListener(this::commonSetup);
+        modEventBus.addListener(this::addCreative);
 
+        modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
+
+    
 
     private void commonSetup(FMLCommonSetupEvent event) {
         // Some common setup code
