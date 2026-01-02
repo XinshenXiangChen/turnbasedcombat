@@ -1,4 +1,4 @@
-package net.dehydrated_pain.turnbasedcombat;
+package net.dehydrated_pain.turnbasedcombatmod;
 
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;

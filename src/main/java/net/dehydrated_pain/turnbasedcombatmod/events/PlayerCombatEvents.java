@@ -1,14 +1,12 @@
-package net.dehydrated_pain.turnbasedcombat.events;
+package net.dehydrated_pain.turnbasedcombatmod.events;
 
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.player.Player;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 
-import static net.dehydrated_pain.turnbasedcombat.TurnBasedCombatMod.LOGGER;
-import static net.dehydrated_pain.turnbasedcombat.TurnBasedCombatMod.MODID;
+import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 
 @EventBusSubscriber(modid = MODID)
 public class PlayerCombatEvents {

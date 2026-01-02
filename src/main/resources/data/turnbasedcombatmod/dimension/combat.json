@@ -1,0 +1,13 @@
+{
+  "type": "turnbasedcombatmod:combat",
+  "generator": {
+    "type": "minecraft:flat",
+    "settings": {
+      "layers": [],
+      "biome": "minecraft:the_void",
+      "structures": {
+        "structures": {}
+      }
+    }
+  }
+}
