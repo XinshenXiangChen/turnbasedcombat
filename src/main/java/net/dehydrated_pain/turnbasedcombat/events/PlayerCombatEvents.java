@@ -22,6 +22,8 @@ public class PlayerCombatEvents {
 
     /*
     setCombatEnvironment should create a carbon copy of the surroundings of the player, then teleport the player and the enemies into the world
+
+    also store original player combat to teleport back
      */
     private void setCombatEnvironment() {
 
