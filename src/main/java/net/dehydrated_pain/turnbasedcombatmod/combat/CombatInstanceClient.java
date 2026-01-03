@@ -6,7 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
@@ -18,18 +18,18 @@ public class CombatInstanceClient {
 
 
     @SubscribeEvent
-    public static void onClientTick(ClientTickEvent.Post event) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
+    public static void onMovementInput(MovementInputUpdateEvent event) {
         if (!inCombat) return;
-
-        mc.options.keyUp.setDown(false);
-        mc.options.keyDown.setDown(false);
-        mc.options.keyLeft.setDown(false);
-        mc.options.keyRight.setDown(false);
-        mc.options.keyJump.setDown(false);
-        mc.options.keyShift.setDown(false);
-        mc.options.keySprint.setDown(false);
+        
+        // Completely zero out all movement inputs
+        event.getInput().forwardImpulse = 0.0F;
+        event.getInput().leftImpulse = 0.0F;
+        event.getInput().jumping = false;
+        event.getInput().shiftKeyDown = false;
+        event.getInput().up = false;
+        event.getInput().down = false;
+        event.getInput().left = false;
+        event.getInput().right = false;
     }
 
 
