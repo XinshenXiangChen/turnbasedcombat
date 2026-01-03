@@ -1,5 +1,5 @@
 {
-  "type": "turnbasedcombatmod:combat",
+  "type": "turnbasedcombatmod:combatdim",
   "generator": {
     "type": "minecraft:flat",
     "settings": {

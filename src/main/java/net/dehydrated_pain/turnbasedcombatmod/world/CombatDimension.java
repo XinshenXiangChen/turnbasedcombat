@@ -11,11 +11,11 @@ import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 
 public class CombatDimension {
     public static final ResourceKey<LevelStem> COMBATDIM_KEY = ResourceKey.create(Registries.LEVEL_STEM,
-            ResourceLocation.fromNamespaceAndPath(MODID, "combat"));
+            ResourceLocation.fromNamespaceAndPath(MODID, "combatdim"));
     public static final ResourceKey<Level> COMBATDIM_LEVEL_KEY = ResourceKey.create(Registries.DIMENSION,
-            ResourceLocation.fromNamespaceAndPath(MODID, "combat"));
+            ResourceLocation.fromNamespaceAndPath(MODID, "combatdim"));
     public static final ResourceKey<DimensionType> COMBATDIM_TYPE = ResourceKey.create(Registries.DIMENSION_TYPE,
-            ResourceLocation.fromNamespaceAndPath(MODID, "combat"));
+            ResourceLocation.fromNamespaceAndPath(MODID, "combatdim"));
 
 
 
