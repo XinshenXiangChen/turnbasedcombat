@@ -225,6 +225,13 @@ public class CombatInstanceServer {
                 }
             }
         }
+        
+        // Reset chunks near (0, 0) in the combat dimension to clear the combat area
+        if (combatServerLevel != null) {
+            BlockPos resetCenter = new BlockPos(0, 0, 0);
+            resetChunks(combatServerLevel, resetCenter, 3); // Reset 3 chunks radius around (0, 0)
+            LOGGER.info("Reset chunks around (0, 0) in combat dimension");
+        }
 
         sendEndCombatPacket(player);
 

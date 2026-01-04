@@ -16,7 +16,7 @@ public class StructurePlacer {
     private static final ResourceLocation DIMENSION = ResourceLocation.fromNamespaceAndPath(MODID, "combatdim");
     private static final ResourceLocation STRUCTURE = ResourceLocation.fromNamespaceAndPath(MODID, "plains_battleground");
 
-    // (21, 1, 5 because all world are of size 42 spawn at height 0 and camera forces z=5 to avoid seeing  the edges of the battleground
+
     private static final BlockPos STRUCTURE_POS = new BlockPos(0, 0, 0);
 
 
