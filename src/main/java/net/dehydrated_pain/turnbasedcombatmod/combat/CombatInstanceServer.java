@@ -57,15 +57,17 @@ public class CombatInstanceServer {
 
 
     // TODO: make the calculation not hardcoded xD
-    private Map<UUID, BlockPos> enemOnBattleOriginalPos = new HashMap<>();
+
 
     private static final BlockPos PLAYER_SPAWN_POS = new BlockPos(21, 1, 5);
     private static final BlockPos FIRST_ENEMY_SPAWN_POS = new BlockPos(21, 1, 20);
     private static final Integer ENEMY_SEPARATION = 4;
 
-
     // battle stuff
+    private Map<UUID, BlockPos> enemOnBattleOriginalPos = new HashMap<>();
     private Queue<UUID> battleQueue = new LinkedList<>();
+    Entity currentBattleEntity;
+    boolean entityTurnFinished = true;
 
     public CombatInstanceServer(ServerPlayer _player, List<Entity> _enemies, Entity firstAttacker) {
 
@@ -94,7 +96,7 @@ public class CombatInstanceServer {
 
         }
         else {
-            battleQueue.offer(player.getUUID());
+
             for (Entity entity: _enemies) {
                 UUID entityUUID = entity.getUUID();
                 if (!battleQueue.contains(entityUUID)) {
@@ -102,6 +104,7 @@ public class CombatInstanceServer {
                 }
 
             }
+            // battleQueue.offer(player.getUUID());
         }
 
         // Register this instance
@@ -122,27 +125,37 @@ public class CombatInstanceServer {
     }
 
     public void turnBasedCombat() {
-        UUID attackerUUID = battleQueue.poll();
-        if (attackerUUID == null) return;
-
-        // Look up the entity from the combat dimension using UUID
-        Entity attacker = combatServerLevel.getEntity(attackerUUID);
-        if (attacker == null) {
-            LOGGER.warn("Entity with UUID {} not found in combat dimension, skipping turn", attackerUUID);
+        if (shouldEndCombat()) {
+            endCombatEnvironment();
             return;
         }
 
-        if (attacker instanceof ServerPlayer && attacker == player) {
-            // Player's turn - handle player actions here
-            LOGGER.info("Player's turn");
+        if (!entityTurnFinished) {
+
+            if (currentBattleEntity == null) {
+                entityTurnFinished = true;
+            }
+
+            if (currentBattleEntity instanceof ServerPlayer && currentBattleEntity == player) {
+                // Player's turn - handle player actions here
+                LOGGER.info("Player's turn");
+            } else {
+                // Only enable attack if not already attacking
+                if (currentBattleEntity instanceof Mob mob && mob.getTarget() == null) {
+                    enemyAttack(currentBattleEntity);
+                }
+            }
         }
         else {
-            enemyAttack(attacker);
+            UUID attackerUUID = battleQueue.poll();
+            if (attackerUUID == null) return;
+            // Look up the entity from the combat dimension using UUID
+            currentBattleEntity = combatServerLevel.getEntity(attackerUUID);
+            if (currentBattleEntity != null) {
+                entityTurnFinished = false;
+            }
         }
 
-        if (shouldEndCombat()) {
-            endCombatEnvironment();
-        }
     }
 
     private void enemyAttack(Entity enemy) {
@@ -306,6 +319,80 @@ public class CombatInstanceServer {
     public static void removeCombatInstance(UUID playerUUID) {
         activeCombatInstances.remove(playerUUID);
     }
+    
+    /**
+     * Get the combat instance for a player
+     */
+    public static CombatInstanceServer getCombatInstance(UUID playerUUID) {
+        return activeCombatInstances.get(playerUUID);
+    }
+    
+    /**
+     * Check if an entity is an enemy in this combat instance
+     */
+    public boolean isEnemy(UUID entityUUID) {
+        return enemyUUIDs.contains(entityUUID);
+    }
+    
+    /**
+     * Finish the current enemy's turn - freeze them and return to original position
+     */
+    public void finishEnemyTurn() {
+        if (currentBattleEntity == null) {
+            entityTurnFinished = true;
+            return;
+        }
+        
+        // If it's the player's turn, just mark as finished
+        if (currentBattleEntity instanceof ServerPlayer && currentBattleEntity == player) {
+            entityTurnFinished = true;
+            return;
+        }
+        
+        // Finish enemy turn
+        Entity enemy = combatServerLevel.getEntity(currentBattleEntity.getUUID());
+        if (enemy == null) {
+            LOGGER.warn("Enemy {} not found in combat dimension when finishing turn", currentBattleEntity.getUUID());
+            entityTurnFinished = true;
+            return;
+        }
+        
+        // Freeze the enemy
+        if (enemy instanceof Mob mob) {
+            mob.setNoAi(true);
+            mob.setDeltaMovement(0, 0, 0);
+            mob.setTarget(null);
+        }
+        
+        // Return to original combat position
+        BlockPos originalPos = enemOnBattleOriginalPos.get(enemy.getUUID());
+        if (originalPos != null) {
+            LOGGER.info("Enemy {} current position before teleport back: ({}, {}, {})", 
+                    enemy.getName().getString(), enemy.getX(), enemy.getY(), enemy.getZ());
+            LOGGER.info("Teleporting enemy {} back to stored position: ({}, {}, {})", 
+                    enemy.getName().getString(), originalPos.getX(), originalPos.getY(), originalPos.getZ());
+            
+            enemy.teleportTo(
+                    combatServerLevel,
+                    originalPos.getX(), originalPos.getY(), originalPos.getZ(),
+                    EnumSet.noneOf(RelativeMovement.class),
+                    enemy.getYRot(),
+                    enemy.getXRot()
+            );
+            LOGGER.info("Finished turn for enemy {} - frozen and returned to position ({}, {}, {})", 
+                    enemy.getName().getString(), originalPos.getX(), originalPos.getY(), originalPos.getZ());
+        } else {
+            LOGGER.warn("No original combat position found for enemy {} (UUID: {})", 
+                    enemy.getName().getString(), enemy.getUUID());
+        }
+        
+        // Re-add to queue for next round
+        battleQueue.offer(enemy.getUUID());
+        
+        // Mark turn as finished
+        entityTurnFinished = true;
+        currentBattleEntity = null;
+    }
 
     public static void sendStartCombatPacket(ServerPlayer player) {
         PacketDistributor.sendToPlayer(player, new StartCombatPacket());
@@ -387,19 +474,31 @@ public class CombatInstanceServer {
         }
         else initialPositionX = FIRST_ENEMY_SPAWN_POS.getX();
 
-        LOGGER.info(String.valueOf(initialPositionX));
-        LOGGER.info(String.valueOf(toTeleport.size()));
+        LOGGER.info("Initial enemy position X: {}", initialPositionX);
+        LOGGER.info("Number of entities to teleport: {}", toTeleport.size());
         for (Entity entity : toTeleport) {
+            // Calculate the target position we're teleporting to
+            double storeX = initialPositionX;
+            double storeY = FIRST_ENEMY_SPAWN_POS.getY();
+            double storeZ = FIRST_ENEMY_SPAWN_POS.getZ();
+            
+            LOGGER.info("Teleporting enemy {} to combat dimension at position: ({}, {}, {})", 
+                    entity.getName().getString(), targetX, targetY, targetZ);
 
             entity.teleportTo(
                     targetLevel,
-                    initialPositionX, FIRST_ENEMY_SPAWN_POS.getY(), FIRST_ENEMY_SPAWN_POS.getZ(),
+                    storeX, storeY, storeZ,
                     EnumSet.noneOf(RelativeMovement.class),
                     player.getYRot(),
                     player.getXRot()
             );
-            enemOnBattleOriginalPos.put(entity.getUUID(), new BlockPos((int) entity.getX(),(int) entity.getY(), (int) entity.getZ()));
-
+            
+            // Store the position we're teleporting TO, not the entity's current position
+            // (which might still be from the old dimension)
+            BlockPos storedPos = new BlockPos((int) storeX, (int) storeY, (int) storeZ);
+            enemOnBattleOriginalPos.put(entity.getUUID(), storedPos);
+            LOGGER.info("Stored original combat position for enemy {}: ({}, {}, {})", 
+                    entity.getName().getString(), storedPos.getX(), storedPos.getY(), storedPos.getZ());
 
             initialPositionX += ENEMY_SEPARATION;
 

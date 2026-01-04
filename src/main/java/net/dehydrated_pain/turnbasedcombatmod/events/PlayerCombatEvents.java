@@ -41,13 +41,7 @@ public class PlayerCombatEvents {
         new CombatInstanceServer(player, toTeleport, toTeleport.getFirst());
     }
 
-    /**
-     * whent he player gets attacked this method is called and the entity gains priority
-     */
-    @SubscribeEvent
-    public static void onPlayerGetsAttacked() {
 
-    }
 
     private static boolean inCombatDimension(ServerPlayer player) {
         // Target dimension
@@ -61,11 +55,28 @@ public class PlayerCombatEvents {
     }
 
     /**
-     * When attacked in the combat dimension
+     * When attacked in the combat dimension - detect when enemy attacks player and finish their turn
      */
     @SubscribeEvent
     public static void attackedInCombat(LivingIncomingDamageEvent event) {
-
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        
+        // Check if player is in combat dimension
+        if (!inCombatDimension(player)) return;
+        
+        // Get the combat instance for this player
+        CombatInstanceServer combatInstance = CombatInstanceServer.getCombatInstance(player.getUUID());
+        if (combatInstance == null) return;
+        
+        // Get the attacker (source entity)
+        Entity attacker = event.getSource().getEntity();
+        if (attacker == null) return;
+        
+        // Check if attacker is one of the enemies in combat
+        if (!combatInstance.isEnemy(attacker.getUUID())) return;
+        
+        // Enemy has attacked the player - finish their turn
+        combatInstance.finishEnemyTurn();
     }
 
 
