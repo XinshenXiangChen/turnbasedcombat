@@ -10,6 +10,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 
 import java.util.List;
@@ -43,6 +44,14 @@ public class PlayerCombatEvents {
 
         // Create combat instance (it will register itself)
         new CombatInstanceServer(player, toTeleport);
+    }
+
+    /**
+     * When attacked in the combat dimension
+     */
+    @SubscribeEvent
+    public static void attackedInCombat(LivingIncomingDamageEvent event) {
+
     }
 
 

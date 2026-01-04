@@ -39,7 +39,8 @@ public class TurnBasedCombatMod {
 
     }
 
-    
+
+
 
     private void commonSetup(FMLCommonSetupEvent event) {
         // Some common setup code

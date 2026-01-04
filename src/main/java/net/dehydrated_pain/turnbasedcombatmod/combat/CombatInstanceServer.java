@@ -52,8 +52,10 @@ public class CombatInstanceServer {
 
     // Store enemy original positions, levels, and rotations
     private Map<UUID, ServerLevel> enemyOriginalLevels = new HashMap<>();
-    private Map<UUID, double[]> enemyOriginalPositions = new HashMap<>(); // [x, y, z]
+    private Map<UUID, BlockPos> enemyOriginalPositions = new HashMap<>(); // [x, y, z]
     private Map<UUID, Vec2> enemyOriginalRot = new HashMap<>();
+
+    private Map<UUID, BlockPos> enemOnBattleOriginalPos = new HashMap<>();
 
     // (21, 1, 5 because all world are of size 42 spawn at height 0 and camera forces z=5 to avoid seeing  the edges of the battleground
     // TODO: make the calculation not hardcoded xD
@@ -95,11 +97,22 @@ public class CombatInstanceServer {
     }
 
     public void turnBasedCombat() {
+        if (turn_index%2 == 0) {
+
+        }
+
         if (shouldEndCombat()) {
             endCombatEnvironment();
         }
     }
-    
+
+    private void enemyAttack(Entity enemy) {
+        if (!(enemy instanceof Mob enemyMob)) return;
+        enemyMob.setNoAi(false);
+        enemyMob.setTarget(player);
+
+    }
+
     /**
      * Checks if all enemies are dead
      * @return true if all enemies are dead or removed
@@ -163,11 +176,7 @@ public class CombatInstanceServer {
         for (Entity enemy: enemies) {
             UUID enemyUUID = enemy.getUUID();
             enemyOriginalLevels.put(enemyUUID, (ServerLevel) enemy.level());
-            enemyOriginalPositions.put(enemyUUID, new double[]{
-                enemy.getX(), 
-                enemy.getY(), 
-                enemy.getZ()
-            });
+            enemyOriginalPositions.put(enemyUUID, new BlockPos((int) enemy.getX(),(int) enemy.getY(), (int) enemy.getZ()));
             enemyOriginalRot.put(enemyUUID, new Vec2(enemy.getYRot(), enemy.getXRot()));
             
             if (enemy instanceof Mob mob) {
@@ -208,19 +217,19 @@ public class CombatInstanceServer {
                 Entity enemy = combatServerLevel.getEntity(enemyUUID);
                 if (enemy != null && enemy.isAlive()) {
                     ServerLevel originalLevel = enemyOriginalLevels.get(enemyUUID);
-                    double[] originalPos = enemyOriginalPositions.get(enemyUUID);
+                    BlockPos originalPos = enemyOriginalPositions.get(enemyUUID);
                     Vec2 originalRot = enemyOriginalRot.get(enemyUUID);
 
                     if (originalLevel != null && originalPos != null && originalRot != null) {
                         enemy.teleportTo(
                                 originalLevel,
-                                originalPos[0], originalPos[1], originalPos[2],
+                                originalPos.getX(), originalPos.getY(), originalPos.getZ(),
                                 EnumSet.noneOf(RelativeMovement.class),
                                 originalRot.x,
                                 originalRot.y
                         );
                         LOGGER.info("Teleported enemy {} back to original position at ({}, {}, {})",
-                                enemyUUID, originalPos[0], originalPos[1], originalPos[2]);
+                                enemyUUID, originalPos.getX(), originalPos.getY(), originalPos.getZ());
                     }
                 }
             }
@@ -304,7 +313,7 @@ public class CombatInstanceServer {
 
 
 
-    private static void teleport(ServerPlayer player, ServerLevel targetLevel, List<Entity> toTeleport) {
+    private void teleport(ServerPlayer player, ServerLevel targetLevel, List<Entity> toTeleport) {
         // Teleport player first - find the top of the structure
         double targetX = 0, targetZ = 0;
 
@@ -336,6 +345,9 @@ public class CombatInstanceServer {
                     player.getYRot(),
                     player.getXRot()
             );
+            enemOnBattleOriginalPos.put(entity.getUUID(), new BlockPos((int) entity.getX(),(int) entity.getY(), (int) entity.getZ()));
+
+
             initialPositionX += ENEMY_SEPARATION;
 
         }
