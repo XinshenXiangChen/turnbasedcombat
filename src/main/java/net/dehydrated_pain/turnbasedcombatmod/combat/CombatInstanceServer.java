@@ -1,8 +1,10 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.worldgen.StructurePlacer;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -28,6 +30,11 @@ public class CombatInstanceServer {
     List<Entity> enemies;
     ServerLevel serverLevel;
 
+    // (21, 1, 5 because all world are of size 42 spawn at height 0 and camera forces z=5 to avoid seeing  the edges of the battleground
+    // TODO: make the calculation not hardcoded xD
+    private static final BlockPos PLAYER_SPAWN_POS = new BlockPos(21, 1, 5);
+    private static final BlockPos FIRST_ENEMY_SPAWN_POS = new BlockPos(21, 1, 20);
+    private static final Integer ENEMY_SEPARATION = 4;
 
     public CombatInstanceServer(ServerPlayer _player, List<Entity> _enemies) {
 
@@ -52,6 +59,9 @@ public class CombatInstanceServer {
      */
     private void setCombatEnvironment() {
         Minecraft mc = Minecraft.getInstance();
+        
+        // Place structure when entering combat dimension
+        StructurePlacer.place(serverLevel);
 
         for (Entity enemy: enemies) {
             if (enemy instanceof Mob mob) {
@@ -77,26 +87,38 @@ public class CombatInstanceServer {
 
 
     private static void teleport(ServerPlayer player, ServerLevel targetLevel, List<Entity> toTeleport) {
-        // Teleport player first
-        double targetX = 0, targetY = 80, targetZ = 0;
+        // Teleport player first - find the top of the structure
+        double targetX = 0, targetZ = 0;
+
+        double targetY = 80;
+        
         player.teleportTo(
                 targetLevel,
-                targetX, targetY, targetZ,
+                PLAYER_SPAWN_POS.getX(), PLAYER_SPAWN_POS.getY(), PLAYER_SPAWN_POS.getZ(),
                 EnumSet.noneOf(RelativeMovement.class),
                 player.getYRot(),
                 player.getXRot()
         );
 
         // Teleport each entity with relative offsets
+        double initialPositionX;
+        if (toTeleport.size() != 1) {
+            initialPositionX = FIRST_ENEMY_SPAWN_POS.getX() - ENEMY_SEPARATION;
+        }
+        else initialPositionX = FIRST_ENEMY_SPAWN_POS.getX();
+
+        LOGGER.info(String.valueOf(initialPositionX));
+        LOGGER.info(String.valueOf(toTeleport.size()));
         for (Entity entity : toTeleport) {
 
             entity.teleportTo(
                     targetLevel,
-                    targetX, targetY, targetZ,
+                    initialPositionX, FIRST_ENEMY_SPAWN_POS.getY(), FIRST_ENEMY_SPAWN_POS.getZ(),
                     EnumSet.noneOf(RelativeMovement.class),
                     player.getYRot(),
                     player.getXRot()
             );
+            initialPositionX += ENEMY_SEPARATION;
 
         }
     }

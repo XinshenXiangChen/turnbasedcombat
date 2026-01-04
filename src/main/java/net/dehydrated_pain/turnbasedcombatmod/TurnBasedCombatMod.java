@@ -1,6 +1,7 @@
 package net.dehydrated_pain.turnbasedcombatmod;
 
 import net.dehydrated_pain.turnbasedcombatmod.worldgen.StructurePlacer;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
@@ -35,6 +36,7 @@ public class TurnBasedCombatMod {
         NeoForge.EVENT_BUS.register(StructurePlacer.class);
 
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+
     }
 
     
