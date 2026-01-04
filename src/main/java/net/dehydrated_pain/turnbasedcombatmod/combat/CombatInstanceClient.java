@@ -42,7 +42,7 @@ public class CombatInstanceClient {
             }
         }
     }
-
+    
     @SubscribeEvent
     public static void onMovementInput(MovementInputUpdateEvent event) {
         if (!inCombat) return;

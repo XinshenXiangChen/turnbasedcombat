@@ -24,26 +24,40 @@ public class PlayerCombatEvents {
     public static void onPlayerAttack(AttackEntityEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
 
-        // Target dimension
-        ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION,
-                ResourceLocation.fromNamespaceAndPath(MODID, "combatdim"));
-
-        ServerLevel targetLevel = player.getServer().getLevel(dimKey);
-        if (targetLevel == null) return;
-
-        ServerLevel currentLevel = player.serverLevel();
-        if (currentLevel == targetLevel) return;
+        if (inCombatDimension(player)) return;
 
         // Find all living entities in the swing radius (example: 3 blocks around player)
         List<Entity> hitEntities = player.level().getEntitiesOfClass(Entity.class,
                 player.getBoundingBox().inflate(2),
                 e -> e != player && e.isAlive());
 
-        // Limit to 3 entities max
+
         List<Entity> toTeleport = hitEntities.size() > 3 ? hitEntities.subList(0, 3) : hitEntities;
 
         // Create combat instance (it will register itself)
-        new CombatInstanceServer(player, toTeleport);
+        // new CombatInstanceServer(player, toTeleport, player);
+
+        // TODO: change, this is to test enemy attacking correctly
+        new CombatInstanceServer(player, toTeleport, toTeleport.getFirst());
+    }
+
+    /**
+     * whent he player gets attacked this method is called and the entity gains priority
+     */
+    @SubscribeEvent
+    public static void onPlayerGetsAttacked() {
+
+    }
+
+    private static boolean inCombatDimension(ServerPlayer player) {
+        // Target dimension
+        ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION,
+                ResourceLocation.fromNamespaceAndPath(MODID, "combatdim"));
+
+        ServerLevel targetLevel = player.getServer().getLevel(dimKey);
+        ServerLevel currentLevel = player.serverLevel();
+        if (currentLevel == targetLevel) return true;
+        return false;
     }
 
     /**

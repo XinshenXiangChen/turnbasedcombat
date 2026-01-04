@@ -38,7 +38,6 @@ public class CombatInstanceServer {
     
     // Store active combat instances by player UUID
     private static final Map<UUID, CombatInstanceServer> activeCombatInstances = new ConcurrentHashMap<>();
-    int turn_index = 0;
 
     public ServerPlayer player;
     List<Entity> enemies;
@@ -55,15 +54,20 @@ public class CombatInstanceServer {
     private Map<UUID, BlockPos> enemyOriginalPositions = new HashMap<>(); // [x, y, z]
     private Map<UUID, Vec2> enemyOriginalRot = new HashMap<>();
 
+
+
+    // TODO: make the calculation not hardcoded xD
     private Map<UUID, BlockPos> enemOnBattleOriginalPos = new HashMap<>();
 
-    // (21, 1, 5 because all world are of size 42 spawn at height 0 and camera forces z=5 to avoid seeing  the edges of the battleground
-    // TODO: make the calculation not hardcoded xD
     private static final BlockPos PLAYER_SPAWN_POS = new BlockPos(21, 1, 5);
     private static final BlockPos FIRST_ENEMY_SPAWN_POS = new BlockPos(21, 1, 20);
     private static final Integer ENEMY_SEPARATION = 4;
 
-    public CombatInstanceServer(ServerPlayer _player, List<Entity> _enemies) {
+
+    // battle stuff
+    private Queue<UUID> battleQueue = new LinkedList<>();
+
+    public CombatInstanceServer(ServerPlayer _player, List<Entity> _enemies, Entity firstAttacker) {
 
         player = _player;
 
@@ -78,7 +82,28 @@ public class CombatInstanceServer {
                 .collect(Collectors.toList());
 
         setCombatEnvironment();
-        
+
+        // build initial battle queue using UUIDs
+        UUID firstAttackerUUID = firstAttacker.getUUID();
+        battleQueue.offer(firstAttackerUUID);
+
+        if (firstAttacker instanceof ServerPlayer && firstAttacker == player) {
+            for (Entity entity: _enemies) {
+                battleQueue.offer(entity.getUUID());
+            }
+
+        }
+        else {
+            battleQueue.offer(player.getUUID());
+            for (Entity entity: _enemies) {
+                UUID entityUUID = entity.getUUID();
+                if (!battleQueue.contains(entityUUID)) {
+                    battleQueue.offer(entityUUID);
+                }
+
+            }
+        }
+
         // Register this instance
         activeCombatInstances.put(player.getUUID(), this);
     }
@@ -97,8 +122,22 @@ public class CombatInstanceServer {
     }
 
     public void turnBasedCombat() {
-        if (turn_index%2 == 0) {
+        UUID attackerUUID = battleQueue.poll();
+        if (attackerUUID == null) return;
 
+        // Look up the entity from the combat dimension using UUID
+        Entity attacker = combatServerLevel.getEntity(attackerUUID);
+        if (attacker == null) {
+            LOGGER.warn("Entity with UUID {} not found in combat dimension, skipping turn", attackerUUID);
+            return;
+        }
+
+        if (attacker instanceof ServerPlayer && attacker == player) {
+            // Player's turn - handle player actions here
+            LOGGER.info("Player's turn");
+        }
+        else {
+            enemyAttack(attacker);
         }
 
         if (shouldEndCombat()) {
@@ -107,10 +146,24 @@ public class CombatInstanceServer {
     }
 
     private void enemyAttack(Entity enemy) {
-        if (!(enemy instanceof Mob enemyMob)) return;
+        // Ensure we have the entity from the combat dimension
+        Entity enemyInCombat = combatServerLevel.getEntity(enemy.getUUID());
+        if (enemyInCombat == null) {
+            LOGGER.warn("Enemy {} not found in combat dimension", enemy.getUUID());
+            return;
+        }
+        
+        // Use the entity from combat dimension
+        enemy = enemyInCombat;
+        
+        if (!(enemy instanceof Mob enemyMob)) {
+            LOGGER.warn("Enemy {} is not a Mob", enemy.getUUID());
+            return;
+        }
+        
         enemyMob.setNoAi(false);
         enemyMob.setTarget(player);
-
+        LOGGER.info("Enabled AI for enemy {} to attack player", enemy.getName().getString());
     }
 
     /**
