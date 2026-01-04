@@ -25,10 +25,14 @@ public class StructurePlacer {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
         LOGGER.info("LevelEvent.Load fired for dimension: {}", level.dimension().location());
         
+        // Only place structure in combat dimension
+        if (!level.dimension().location().equals(DIMENSION)) {
+            LOGGER.info("Not combat dimension, skipping structure placement");
+            return;
+        }
 
         LOGGER.info("Combat dimension loaded, placing structure");
         place(level, STRUCTURE_POS);
-
     }
 
 

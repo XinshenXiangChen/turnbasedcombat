@@ -1,5 +1,6 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
+import net.dehydrated_pain.turnbasedcombatmod.network.EndCombatPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
@@ -13,6 +14,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.CalculateDetachedCameraDistanceEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
@@ -77,6 +79,18 @@ public class CombatInstanceClient {
                 .exceptionally(e -> {
                     // Handle exception, optional
                     context.disconnect(net.minecraft.network.chat.Component.literal("Failed to start combat: " + e.getMessage()));
+                    return null;
+                });
+    }
+    
+    public static void endCombatNetworkHandler(final EndCombatPacket pkt, final IPayloadContext context) {
+        // Main thread work
+        context.enqueueWork(() -> {
+                    endCombat();
+                })
+                .exceptionally(e -> {
+                    // Handle exception, optional
+                    context.disconnect(net.minecraft.network.chat.Component.literal("Failed to end combat: " + e.getMessage()));
                     return null;
                 });
     }

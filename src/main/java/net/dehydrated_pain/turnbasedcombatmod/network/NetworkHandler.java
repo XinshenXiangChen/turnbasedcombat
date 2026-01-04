@@ -13,10 +13,17 @@ public class NetworkHandler {
     @SubscribeEvent // on the mod event bus
     public static void register(final RegisterPayloadHandlersEvent event) {
         final PayloadRegistrar registrar = event.registrar("1");
+        
         registrar.playToClient(
                 StartCombatPacket.TYPE,
                 StartCombatPacket.STREAM_CODEC,
                 CombatInstanceClient::startCombatNetworkHandler
+        );
+        
+        registrar.playToClient(
+                EndCombatPacket.TYPE,
+                EndCombatPacket.STREAM_CODEC,
+                CombatInstanceClient::endCombatNetworkHandler
         );
     }
 }

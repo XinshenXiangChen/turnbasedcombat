@@ -41,9 +41,8 @@ public class PlayerCombatEvents {
         // Limit to 3 entities max
         List<Entity> toTeleport = hitEntities.size() > 3 ? hitEntities.subList(0, 3) : hitEntities;
 
-
-        CombatInstanceServer combatInstance = new CombatInstanceServer(player, toTeleport);
-        combatInstance.turnBasedCombat();
+        // Create combat instance (it will register itself)
+        new CombatInstanceServer(player, toTeleport);
     }
 
 
