@@ -1,20 +1,25 @@
 package net.dehydrated_pain.turnbasedcombatmod.events;
 
 import net.dehydrated_pain.turnbasedcombatmod.combat.CombatInstanceServer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 
 import java.util.List;
 
+import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.LOGGER;
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 
 @EventBusSubscriber(modid = MODID)
@@ -26,41 +31,83 @@ public class PlayerCombatEvents {
 
         if (inCombatDimension(player)) return;
 
-        // Find all living entities in the swing radius (example: 3 blocks around player)
-        List<Entity> hitEntities = player.level().getEntitiesOfClass(Entity.class,
-                player.getBoundingBox().inflate(2),
-                e -> e != player && e.isAlive());
+        // Schedule combat creation on next tick to avoid interfering with Epic Fight's attack processing
+        player.getServer().execute(() -> {
+            player.getServer().execute(() -> {
+                // Find all living entities in the swing radius (example: 3 blocks around player)
+                List<Entity> hitEntities = player.level().getEntitiesOfClass(Entity.class,
+                        player.getBoundingBox().inflate(2),
+                        e -> e != player && e.isAlive());
 
+                if (hitEntities.isEmpty()) return;
 
-        List<Entity> toTeleport = hitEntities.size() > 3 ? hitEntities.subList(0, 3) : hitEntities;
+                List<Entity> toTeleport = hitEntities.size() > 3 ? hitEntities.subList(0, 3) : hitEntities;
 
-        // Create combat instance (it will register itself)
-        // new CombatInstanceServer(player, toTeleport, player);
+                BlockPos playerPos = player.blockPosition();
+                Biome biome = player.serverLevel().getBiome(playerPos).value();
 
-        // TODO: change, this is to test enemy attacking correctly
-        new CombatInstanceServer(player, toTeleport, toTeleport.getFirst());
+                new CombatInstanceServer(player, toTeleport, player, biome);
+            });
+        });
     }
 
+    /**
+     * When player is attacked OUTSIDE combat dimension - start combat with attacker as first attacker
+     */
 
+    // TODO: FIX PROBLEM WITH EPIC FIGHT MOD THRTOW NULLPOIINTER EXCEPTION
+    @SubscribeEvent
+    public static void onPlayerAttacked(LivingIncomingDamageEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        
+        if (inCombatDimension(player)) return;
+        
+        // Get the attacker (source entity)
+        Entity attacker = event.getSource().getEntity();
+        if (attacker == null) return;
 
-    private static boolean inCombatDimension(ServerPlayer player) {
-        // Target dimension
-        ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION,
-                ResourceLocation.fromNamespaceAndPath(MODID, "combatdim"));
+        if (!attacker.isAlive()) return;
+        
+        // Check if there's already a combat instance to avoid duplicates
+        if (CombatInstanceServer.getCombatInstance(player.getUUID()) != null) return;
 
-        ServerLevel targetLevel = player.getServer().getLevel(dimKey);
-        ServerLevel currentLevel = player.serverLevel();
-        if (currentLevel == targetLevel) return true;
-        return false;
+        // Schedule combat creation on next tick to avoid interfering with Epic Fight's damage processing
+        player.getServer().execute(() -> {
+            player.getServer().execute(() -> {
+                // Build list with attacker first, then nearby entities
+                List<Entity> toTeleport = new java.util.ArrayList<>();
+                toTeleport.add(attacker);
+                
+
+                List<Entity> nearbyEntities = player.level().getEntitiesOfClass(Entity.class,
+                        player.getBoundingBox().inflate(2),
+                        e -> e != player && e != attacker && e.isAlive());
+                
+
+                toTeleport.addAll(nearbyEntities);
+
+                if (toTeleport.size() > 3) {
+                    toTeleport = toTeleport.subList(0, 3);
+                }
+                
+
+                BlockPos playerPos = player.blockPosition();
+                Biome biome = player.serverLevel().getBiome(playerPos).value();
+                
+
+                new CombatInstanceServer(player, toTeleport, attacker, biome);
+            });
+        });
     }
-
+    
     /**
      * When attacked in the combat dimension - detect when enemy attacks player and finish their turn
      */
     @SubscribeEvent
-    public static void attackedInCombat(LivingIncomingDamageEvent event) {
+    private static void attackedInCombat(LivingIncomingDamageEvent event) {
+        event.getEntity().sendSystemMessage(Component.literal("You got attacked"));
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
-        
+
         // Check if player is in combat dimension
         if (!inCombatDimension(player)) return;
         
@@ -76,13 +123,22 @@ public class PlayerCombatEvents {
         if (!combatInstance.isEnemy(attacker.getUUID())) return;
         
         // Enemy has attacked the player - finish their turn
+        LOGGER.info("finished enemy turn");
         combatInstance.finishEnemyTurn();
     }
 
 
 
+    private static boolean inCombatDimension(ServerPlayer player) {
+        // Target dimension
+        ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION,
+                ResourceLocation.fromNamespaceAndPath(MODID, "combatdim"));
 
-
+        ServerLevel targetLevel = player.getServer().getLevel(dimKey);
+        ServerLevel currentLevel = player.serverLevel();
+        if (currentLevel == targetLevel) return true;
+        return false;
+    }
 
 
 

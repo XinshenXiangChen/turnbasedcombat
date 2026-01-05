@@ -17,6 +17,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.RelativeMovement;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.phys.AABB;
@@ -28,6 +29,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.LOGGER;
@@ -59,17 +61,18 @@ public class CombatInstanceServer {
     // TODO: make the calculation not hardcoded xD
 
 
-    private static final BlockPos PLAYER_SPAWN_POS = new BlockPos(21, 1, 5);
-    private static final BlockPos FIRST_ENEMY_SPAWN_POS = new BlockPos(21, 1, 20);
-    private static final Integer ENEMY_SEPARATION = 4;
+
+    private static final Integer ENEMY_SEPARATION = 3;
 
     // battle stuff
+    private final BlockPos PLAYER_SPAWN_POS = new BlockPos(0, 1, 7);
+    private final BlockPos FIRST_ENEMY_SPAWN_POS = new BlockPos(0, 1, 0);
     private Map<UUID, BlockPos> enemOnBattleOriginalPos = new HashMap<>();
     private Queue<UUID> battleQueue = new LinkedList<>();
     Entity currentBattleEntity;
     boolean entityTurnFinished = true;
 
-    public CombatInstanceServer(ServerPlayer _player, List<Entity> _enemies, Entity firstAttacker) {
+    public CombatInstanceServer(ServerPlayer _player, List<Entity> _enemies, Entity firstAttacker, Biome biome) {
 
         player = _player;
 
@@ -83,13 +86,13 @@ public class CombatInstanceServer {
                 .map(Entity::getUUID)
                 .collect(Collectors.toList());
 
-        setCombatEnvironment();
+        setCombatEnvironment(biome);
 
         // build initial battle queue using UUIDs
         UUID firstAttackerUUID = firstAttacker.getUUID();
-        battleQueue.offer(firstAttackerUUID);
 
         if (firstAttacker instanceof ServerPlayer && firstAttacker == player) {
+            battleQueue.offer(firstAttackerUUID);
             for (Entity entity: _enemies) {
                 battleQueue.offer(entity.getUUID());
             }
@@ -104,7 +107,7 @@ public class CombatInstanceServer {
                 }
 
             }
-            // battleQueue.offer(player.getUUID());
+            battleQueue.offer(player.getUUID());
         }
 
         // Register this instance
@@ -137,8 +140,7 @@ public class CombatInstanceServer {
             }
 
             if (currentBattleEntity instanceof ServerPlayer && currentBattleEntity == player) {
-                // Player's turn - handle player actions here
-                LOGGER.info("Player's turn");
+                playerAttack();
             } else {
                 // Only enable attack if not already attacking
                 if (currentBattleEntity instanceof Mob mob && mob.getTarget() == null) {
@@ -157,6 +159,13 @@ public class CombatInstanceServer {
         }
 
     }
+    private void playerAttack() {
+        LOGGER.info("playerturn");
+        entityTurnFinished = true;
+
+        battleQueue.offer(player.getUUID());
+    }
+
 
     private void enemyAttack(Entity enemy) {
         // Ensure we have the entity from the combat dimension
@@ -184,18 +193,35 @@ public class CombatInstanceServer {
      * @return true if all enemies are dead or removed
      */
     public boolean areAllEnemiesDead() {
-        if (enemyUUIDs == null || enemyUUIDs.isEmpty()) return true;
-        if (combatServerLevel == null) return true;
+        if (enemyUUIDs == null || enemyUUIDs.isEmpty()) {
+            LOGGER.warn("areAllEnemiesDead: enemyUUIDs is null or empty");
+            return true;
+        }
+        if (combatServerLevel == null) {
+            LOGGER.warn("areAllEnemiesDead: combatServerLevel is null");
+            return true;
+        }
         
+        int aliveCount = 0;
+        int deadCount = 0;
+        int notFoundCount = 0;
 
         for (UUID enemyUUID : enemyUUIDs) {
             Entity enemy = combatServerLevel.getEntity(enemyUUID);
-            if (enemy != null && enemy.isAlive()) {
-                return false;
+            if (enemy == null) {
+                notFoundCount++;
+                LOGGER.warn("Enemy with UUID {} not found in combat dimension", enemyUUID);
+            } else if (enemy.isAlive()) {
+                aliveCount++;
+                return false; // Found at least one alive enemy
+            } else {
+                deadCount++;
+                LOGGER.warn("Enemy {} is dead", enemy.getName().getString());
             }
         }
         
-        LOGGER.info("Enemy status: {} total, {} alive in combat dimension", enemyUUIDs.size());
+        LOGGER.info("Enemy status: {} total, {} alive, {} dead, {} not found in combat dimension", 
+                enemyUUIDs.size(), aliveCount, deadCount, notFoundCount);
         return true;
     }
     
@@ -221,7 +247,8 @@ public class CombatInstanceServer {
 
     also store original player combat to teleport back
      */
-    private void setCombatEnvironment() {
+    private void setCombatEnvironment(Biome biome) {
+
         Minecraft mc = Minecraft.getInstance();
         
         // Store original position and dimension
@@ -231,13 +258,10 @@ public class CombatInstanceServer {
         originalZ = player.getZ();
         originalYRot = player.getYRot();
         originalXRot = player.getXRot();
-        
-        LOGGER.info("Stored original position: ({}, {}, {}) in dimension {}", 
-                originalX, originalY, originalZ, originalLevel.dimension().location());
-        
-        // Place structure when entering combat dimension
-        StructurePlacer.place(combatServerLevel);
 
+        // Place structure when entering combat dimension
+        StructurePlacer sp = new StructurePlacer(biome, combatServerLevel);
+        sp.place();
         // Store original positions, levels, and rotations for all enemies
         for (Entity enemy: enemies) {
             UUID enemyUUID = enemy.getUUID();
@@ -387,6 +411,7 @@ public class CombatInstanceServer {
         }
         
         // Re-add to queue for next round
+        LOGGER.info(battleQueue.toString());
         battleQueue.offer(enemy.getUUID());
         
         // Mark turn as finished
@@ -477,13 +502,18 @@ public class CombatInstanceServer {
         LOGGER.info("Initial enemy position X: {}", initialPositionX);
         LOGGER.info("Number of entities to teleport: {}", toTeleport.size());
         for (Entity entity : toTeleport) {
+            UUID entityUUID = entity.getUUID();
+            LOGGER.info("=== Teleporting enemy {} (UUID: {}) ===", entity.getName().getString(), entityUUID);
+            LOGGER.info("Enemy alive before teleport: {}", entity.isAlive());
+            LOGGER.info("Enemy dimension before teleport: {}", entity.level().dimension().location());
+            
             // Calculate the target position we're teleporting to
             double storeX = initialPositionX;
             double storeY = FIRST_ENEMY_SPAWN_POS.getY();
             double storeZ = FIRST_ENEMY_SPAWN_POS.getZ();
             
             LOGGER.info("Teleporting enemy {} to combat dimension at position: ({}, {}, {})", 
-                    entity.getName().getString(), targetX, targetY, targetZ);
+                    entity.getName().getString(), storeX, storeY, storeZ);
 
             entity.teleportTo(
                     targetLevel,
@@ -493,16 +523,32 @@ public class CombatInstanceServer {
                     player.getXRot()
             );
             
+            // Verify enemy after teleportation (on next tick)
+            targetLevel.getServer().execute(() -> {
+                targetLevel.getServer().execute(() -> {
+                    Entity enemyAfterTP = targetLevel.getEntity(entityUUID);
+                    if (enemyAfterTP != null) {
+                        LOGGER.info("Enemy {} found in combat dimension after teleport", entity.getName().getString());
+                        LOGGER.info("  - Alive: {}", enemyAfterTP.isAlive());
+                        LOGGER.info("  - Position: ({}, {}, {})", enemyAfterTP.getX(), enemyAfterTP.getY(), enemyAfterTP.getZ());
+                        LOGGER.info("  - Dimension: {}", enemyAfterTP.level().dimension().location());
+                    } else {
+                        LOGGER.error("Enemy {} NOT FOUND in combat dimension after teleport!", entity.getName().getString());
+                    }
+                });
+            });
+            
             // Store the position we're teleporting TO, not the entity's current position
             // (which might still be from the old dimension)
             BlockPos storedPos = new BlockPos((int) storeX, (int) storeY, (int) storeZ);
-            enemOnBattleOriginalPos.put(entity.getUUID(), storedPos);
+            enemOnBattleOriginalPos.put(entityUUID, storedPos);
             LOGGER.info("Stored original combat position for enemy {}: ({}, {}, {})", 
                     entity.getName().getString(), storedPos.getX(), storedPos.getY(), storedPos.getZ());
 
             initialPositionX += ENEMY_SEPARATION;
-
         }
+        
+        LOGGER.info("Finished teleporting {} enemies", toTeleport.size());
     }
 
 }
