@@ -1,9 +1,8 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
-import com.ibm.icu.impl.Pair;
 import net.dehydrated_pain.turnbasedcombatmod.network.EndCombatPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
-import net.dehydrated_pain.turnbasedcombatmod.worldgen.StructurePlacer;
+import net.dehydrated_pain.turnbasedcombatmod.structures.StructurePlacer;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -29,7 +28,6 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.LOGGER;
@@ -65,7 +63,7 @@ public class CombatInstanceServer {
     private static final Integer ENEMY_SEPARATION = 3;
 
     // battle stuff
-    private final BlockPos PLAYER_SPAWN_POS = new BlockPos(0, 1, 7);
+    private final BlockPos PLAYER_SPAWN_POS = new BlockPos(0, 1, -7);
     private final BlockPos FIRST_ENEMY_SPAWN_POS = new BlockPos(0, 1, 0);
     private Map<UUID, BlockPos> enemOnBattleOriginalPos = new HashMap<>();
     private Queue<UUID> battleQueue = new LinkedList<>();
@@ -478,15 +476,37 @@ public class CombatInstanceServer {
 
 
 
+    /**
+     * Find the highest solid block at the given X, Z coordinates
+     * @param level The level to search in
+     * @param x X coordinate
+     * @param z Z coordinate
+     * @return The Y coordinate of the highest solid block + 1 (so entity spawns on top)
+     */
+    private int findHighestBlock(ServerLevel level, int x, int z) {
+        // Start from the top and work down to find the highest solid block
+        for (int y = level.getMaxBuildHeight() - 1; y >= level.getMinBuildHeight(); y--) {
+            BlockPos pos = new BlockPos(x, y, z);
+            if (!level.getBlockState(pos).isAir() && level.getBlockState(pos).blocksMotion()) {
+                return y + 1; // Return Y + 1 so entity spawns on top of the block
+            }
+        }
+        // If no solid block found, return a safe default
+        return level.getMinBuildHeight() + 1;
+    }
+    
     private void teleport(ServerPlayer player, ServerLevel targetLevel, List<Entity> toTeleport) {
-        // Teleport player first - find the top of the structure
-        double targetX = 0, targetZ = 0;
-
-        double targetY = 80;
+        // Find the highest block at player spawn position
+        int playerX = PLAYER_SPAWN_POS.getX();
+        int playerZ = PLAYER_SPAWN_POS.getZ();
+        int playerY = findHighestBlock(targetLevel, playerX, playerZ);
+        
+        LOGGER.info("Player spawn position: ({}, {}, {}) - highest block at Y={}", 
+                playerX, playerZ, playerY - 1, playerY);
         
         player.teleportTo(
                 targetLevel,
-                PLAYER_SPAWN_POS.getX(), PLAYER_SPAWN_POS.getY(), PLAYER_SPAWN_POS.getZ(),
+                playerX, playerY, playerZ,
                 EnumSet.noneOf(RelativeMovement.class),
                 player.getYRot(),
                 player.getXRot()
@@ -508,12 +528,13 @@ public class CombatInstanceServer {
             LOGGER.info("Enemy dimension before teleport: {}", entity.level().dimension().location());
             
             // Calculate the target position we're teleporting to
-            double storeX = initialPositionX;
-            double storeY = FIRST_ENEMY_SPAWN_POS.getY();
-            double storeZ = FIRST_ENEMY_SPAWN_POS.getZ();
+            int storeX = (int) initialPositionX;
+            int storeZ = FIRST_ENEMY_SPAWN_POS.getZ();
+            // Find the highest block at this position
+            int storeY = findHighestBlock(targetLevel, storeX, storeZ);
             
-            LOGGER.info("Teleporting enemy {} to combat dimension at position: ({}, {}, {})", 
-                    entity.getName().getString(), storeX, storeY, storeZ);
+            LOGGER.info("Teleporting enemy {} to combat dimension at position: ({}, {}, {}) - highest block at Y={}", 
+                    entity.getName().getString(), storeX, storeY, storeZ, storeY - 1);
 
             entity.teleportTo(
                     targetLevel,
@@ -540,7 +561,7 @@ public class CombatInstanceServer {
             
             // Store the position we're teleporting TO, not the entity's current position
             // (which might still be from the old dimension)
-            BlockPos storedPos = new BlockPos((int) storeX, (int) storeY, (int) storeZ);
+            BlockPos storedPos = new BlockPos(storeX, storeY, storeZ);
             enemOnBattleOriginalPos.put(entityUUID, storedPos);
             LOGGER.info("Stored original combat position for enemy {}: ({}, {}, {})", 
                     entity.getName().getString(), storedPos.getX(), storedPos.getY(), storedPos.getZ());

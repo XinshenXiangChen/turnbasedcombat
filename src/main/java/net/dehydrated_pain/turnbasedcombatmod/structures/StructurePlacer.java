@@ -1,4 +1,4 @@
-package net.dehydrated_pain.turnbasedcombatmod.worldgen;
+package net.dehydrated_pain.turnbasedcombatmod.structures;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.RegistryAccess;
@@ -23,7 +23,7 @@ public class StructurePlacer {
 
     public StructurePlacer(Biome biome, ServerLevel level) {
         this.level = level;
-        String biomeName = "supademacaco"; // Default fallback
+        String biomeName = "test"; // Default fallback
         
         // Get the biome's ResourceLocation from the registry using RegistryAccess
         if (level != null) {
@@ -33,7 +33,7 @@ public class StructurePlacer {
             if (biomeRegistry != null) {
                 ResourceLocation biomeLocation = biomeRegistry.get().getKey(biome);
                 if (biomeLocation != null) {
-                    // Get the path part (e.g., "plains" from "minecraft:plains")
+
                     biomeName = biomeLocation.getPath();
                     LOGGER.info("Biome location: {}, Biome name: {}", biomeLocation, biomeName);
                 } else {
@@ -47,7 +47,7 @@ public class StructurePlacer {
         }
 
         // Create structure name based on biome (e.g., "plains_battleground")
-        STRUCTURE = ResourceLocation.fromNamespaceAndPath(MODID, biomeName + "_battleground");
+        STRUCTURE = ResourceLocation.fromNamespaceAndPath(MODID, biomeName  +   "_battleground");
     }
 
     public void place() {
@@ -73,7 +73,7 @@ public class StructurePlacer {
         // Structure is placed at the corner position, so if you want it centered:
         BlockPos pos = new BlockPos(
                 (-widthX / 2) + offset.getX() ,  // Center X
-                0,             // Y position (ground level)
+                -heightY + offset.getY(),             // Y position (ground level)
                 (-depthZ / 2)+ offset.getZ()   // Center Z
         );
         

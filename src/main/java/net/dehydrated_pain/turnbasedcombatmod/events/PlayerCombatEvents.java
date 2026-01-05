@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
@@ -25,38 +26,36 @@ import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 @EventBusSubscriber(modid = MODID)
 public class PlayerCombatEvents {
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onPlayerAttack(AttackEntityEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
 
         if (inCombatDimension(player)) return;
 
-        // Schedule combat creation on next tick to avoid interfering with Epic Fight's attack processing
-        player.getServer().execute(() -> {
-            player.getServer().execute(() -> {
-                // Find all living entities in the swing radius (example: 3 blocks around player)
-                List<Entity> hitEntities = player.level().getEntitiesOfClass(Entity.class,
-                        player.getBoundingBox().inflate(2),
-                        e -> e != player && e.isAlive());
+        // Find all living entities in the swing radius (example: 3 blocks around player)
+        List<Entity> hitEntities = player.level().getEntitiesOfClass(Entity.class,
+                player.getBoundingBox().inflate(2),
+                e -> e != player && e.isAlive());
 
-                if (hitEntities.isEmpty()) return;
+        if (hitEntities.isEmpty()) return;
 
-                List<Entity> toTeleport = hitEntities.size() > 3 ? hitEntities.subList(0, 3) : hitEntities;
+        List<Entity> toTeleport = hitEntities.size() > 3 ? hitEntities.subList(0, 3) : hitEntities;
 
-                BlockPos playerPos = player.blockPosition();
-                Biome biome = player.serverLevel().getBiome(playerPos).value();
+        BlockPos playerPos = player.blockPosition();
+        Biome biome = player.serverLevel().getBiome(playerPos).value();
 
-                new CombatInstanceServer(player, toTeleport, player, biome);
-            });
-        });
+        // Cancel the attack event to prevent Epic Fight and other mods from processing it
+        // We're handling combat in our turn-based system instead
+        event.setCanceled(true);
+
+        new CombatInstanceServer(player, toTeleport, player, biome);
     }
 
     /**
      * When player is attacked OUTSIDE combat dimension - start combat with attacker as first attacker
      */
 
-    // TODO: FIX PROBLEM WITH EPIC FIGHT MOD THRTOW NULLPOIINTER EXCEPTION
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onPlayerAttacked(LivingIncomingDamageEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         
@@ -71,33 +70,28 @@ public class PlayerCombatEvents {
         // Check if there's already a combat instance to avoid duplicates
         if (CombatInstanceServer.getCombatInstance(player.getUUID()) != null) return;
 
-        // Schedule combat creation on next tick to avoid interfering with Epic Fight's damage processing
-        player.getServer().execute(() -> {
-            player.getServer().execute(() -> {
-                // Build list with attacker first, then nearby entities
-                List<Entity> toTeleport = new java.util.ArrayList<>();
-                toTeleport.add(attacker);
-                
+        // Cancel the damage event to prevent Epic Fight from processing it
+        // We're handling combat in our turn-based system instead
+        event.setCanceled(true);
 
-                List<Entity> nearbyEntities = player.level().getEntitiesOfClass(Entity.class,
-                        player.getBoundingBox().inflate(2),
-                        e -> e != player && e != attacker && e.isAlive());
-                
+        // Build list with attacker first, then nearby entities
+        List<Entity> toTeleport = new java.util.ArrayList<>();
+        toTeleport.add(attacker);
 
-                toTeleport.addAll(nearbyEntities);
+        List<Entity> nearbyEntities = player.level().getEntitiesOfClass(Entity.class,
+                player.getBoundingBox().inflate(2),
+                e -> e != player && e != attacker && e.isAlive());
 
-                if (toTeleport.size() > 3) {
-                    toTeleport = toTeleport.subList(0, 3);
-                }
-                
+        toTeleport.addAll(nearbyEntities);
 
-                BlockPos playerPos = player.blockPosition();
-                Biome biome = player.serverLevel().getBiome(playerPos).value();
-                
+        if (toTeleport.size() > 3) {
+            toTeleport = toTeleport.subList(0, 3);
+        }
 
-                new CombatInstanceServer(player, toTeleport, attacker, biome);
-            });
-        });
+        BlockPos playerPos = player.blockPosition();
+        Biome biome = player.serverLevel().getBiome(playerPos).value();
+
+        new CombatInstanceServer(player, toTeleport, attacker, biome);
     }
     
     /**
