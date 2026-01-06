@@ -25,5 +25,14 @@ public class NetworkHandler {
                 EndCombatPacket.STREAM_CODEC,
                 CombatInstanceClient::endCombatNetworkHandler
         );
+
+        /** TODO:
+        registrar.playToClient(
+                EndCombatPacket.TYPE,
+                EndCombatPacket.STREAM_CODEC,
+                CombatInstanceClient::
+                
+        );
+         */
     }
 }
