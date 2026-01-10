@@ -1,4 +1,4 @@
-package net.dehydrated_pain.turnbasedcombatmod.structures;
+package net.dehydrated_pain.turnbasedcombatmod.structuregen;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.RegistryAccess;
@@ -16,6 +16,7 @@ import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 public class StructurePlacer {
 
     private static final ResourceLocation DIMENSION = ResourceLocation.fromNamespaceAndPath(MODID, "combatdim");
+    private ResourceLocation TEST_STRUCTURE = ResourceLocation.fromNamespaceAndPath(MODID, "test");
     private ResourceLocation STRUCTURE;
 
     double structureX, structureY;
@@ -46,8 +47,8 @@ public class StructurePlacer {
             LOGGER.warn("ServerLevel is null, using default biome name: {}", biomeName);
         }
 
-        // Create structure name based on biome (e.g., "plains_battleground")
-        STRUCTURE = ResourceLocation.fromNamespaceAndPath(MODID, biomeName  +   "_battleground");
+
+        STRUCTURE = ResourceLocation.fromNamespaceAndPath(MODID, "test");
     }
 
     public void place() {
@@ -56,29 +57,31 @@ public class StructurePlacer {
 
     public void place(BlockPos offset) {
         if (level == null) return;
-        
+
         LOGGER.info("Getting structure template: {}", STRUCTURE);
-        StructureTemplate template = level.getStructureManager().getOrCreate(STRUCTURE);
-        
-        // Get structure dimensions
+        StructureTemplate template = level.getStructureManager().get(STRUCTURE).orElse(null);
+
+        if (template == null) {
+            LOGGER.error("Failed to load structure from resources: {}. Make sure the file exists at data/{}/structure/{}.nbt",
+                    STRUCTURE, MODID, STRUCTURE.getPath());
+            return;
+        }
+
         Vec3i size = template.getSize();
-        int widthX = size.getX();   // Width in X direction
-        int heightY = size.getY();  // Height in Y direction
-        int depthZ = size.getZ();   // Depth/Width in Z direction
+        int widthX = size.getX();
+        int heightY = size.getY();
+        int depthZ = size.getZ();
         
         LOGGER.info("Structure dimensions - Width (X): {}, Height (Y): {}, Depth (Z): {}", 
                 widthX, heightY, depthZ);
-        
-        // Calculate placement position (centered at origin or use your desired position)
-        // Structure is placed at the corner position, so if you want it centered:
+
         BlockPos pos = new BlockPos(
-                (-widthX / 2) + offset.getX() ,  // Center X
-                -heightY + offset.getY(),             // Y position (ground level)
-                (-depthZ / 2)+ offset.getZ()   // Center Z
+                (-widthX / 2) + offset.getX() ,
+                -heightY + offset.getY(),
+                (-depthZ / 2)+ offset.getZ()
         );
         
-        // Or if you want to place at a specific position:
-        // BlockPos pos = new BlockPos(0, 0, 0);
+
         
         LOGGER.info("=== STRUCTURE PLACEMENT ===");
         LOGGER.info("Structure: {}", STRUCTURE);
