@@ -135,7 +135,8 @@ public class CombatInstanceServer {
             return;
         }
 
-        if (!entityTurnFinished) {
+
+        if (!entityTurnFinished && (currentBattleEntity.isAlive())) {
 
             if (currentBattleEntity == null) {
                 entityTurnFinished = true;
