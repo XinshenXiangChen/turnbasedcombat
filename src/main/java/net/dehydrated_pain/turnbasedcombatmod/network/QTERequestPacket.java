@@ -1,19 +1,28 @@
 package net.dehydrated_pain.turnbasedcombatmod.network;
 
 import io.netty.buffer.ByteBuf;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.DodgeTypes;
+import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 
-public record QTERequestPacket() implements CustomPacketPayload {
+public record QTERequestPacket(DodgeTypes dodgeType) implements CustomPacketPayload {
 
-    public static final CustomPacketPayload.Type<QTEResponsePacket> TYPE = new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(MODID, "qte_request"));
+    public static final CustomPacketPayload.Type<QTERequestPacket> TYPE = new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(MODID, "qte_request"));
 
-    // Since QTERequestPacket is a record with no fields, we use StreamCodec.unit
-    // This creates a codec that always encodes/decodes to the same instance
-    public static final StreamCodec<ByteBuf, QTEResponsePacket> STREAM_CODEC = StreamCodec.unit(new QTEResponsePacket());
+    // StreamCodec for serializing/deserializing the packet with DodgeTypes enum
+    public static final StreamCodec<ByteBuf, QTERequestPacket> STREAM_CODEC = StreamCodec.composite(
+            // Encode/decode DodgeTypes by ordinal (as byte, since we have < 256 enum values)
+            ByteBufCodecs.BYTE.map(
+                    ordinal -> DodgeTypes.values()[ordinal & 0xFF],
+                    dodgeType -> (byte) dodgeType.ordinal()
+            ),
+            QTERequestPacket::dodgeType,
+            QTERequestPacket::new
+    );
 
     @Override
     public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {

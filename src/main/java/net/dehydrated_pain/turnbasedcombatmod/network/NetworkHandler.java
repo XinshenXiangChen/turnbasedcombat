@@ -1,6 +1,7 @@
 package net.dehydrated_pain.turnbasedcombatmod.network;
 
 import net.dehydrated_pain.turnbasedcombatmod.combat.CombatInstanceClient;
+import net.dehydrated_pain.turnbasedcombatmod.combat.CombatInstanceServer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -13,7 +14,9 @@ public class NetworkHandler {
     @SubscribeEvent // on the mod event bus
     public static void register(final RegisterPayloadHandlersEvent event) {
         final PayloadRegistrar registrar = event.registrar("1");
-        
+
+
+        // server to client
         registrar.playToClient(
                 StartCombatPacket.TYPE,
                 StartCombatPacket.STREAM_CODEC,
@@ -26,13 +29,19 @@ public class NetworkHandler {
                 CombatInstanceClient::endCombatNetworkHandler
         );
 
-        /** TODO:
         registrar.playToClient(
-                EndCombatPacket.TYPE,
-                EndCombatPacket.STREAM_CODEC,
-                CombatInstanceClient::
-                
+                QTERequestPacket.TYPE,
+                QTERequestPacket.STREAM_CODEC,
+                CombatInstanceClient::qteRequesteNetworkHandler
         );
-         */
+
+        // client to server
+        registrar.playToServer(
+                QTEResponsePacket.TYPE,
+                QTEResponsePacket.STREAM_CODEC,
+                CombatInstanceServer::qteResponseNetworkHandler
+        );
+
+
     }
 }

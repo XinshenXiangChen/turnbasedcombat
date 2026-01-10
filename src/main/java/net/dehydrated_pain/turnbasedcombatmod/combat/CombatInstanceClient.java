@@ -1,7 +1,10 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
 import net.dehydrated_pain.turnbasedcombatmod.network.EndCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.DodgeTypes;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.Registries;
@@ -94,6 +97,27 @@ public class CombatInstanceClient {
                     return null;
                 });
     }
+
+    public static void qteRequesteNetworkHandler(final QTERequestPacket pkt, final IPayloadContext context) {
+        // Main thread work
+        context.enqueueWork(() -> {
+            DodgeTypes requiredDodgeType = pkt.dodgeType();
+            String actionName = requiredDodgeType.getActionName();
+            
+            // TODO: Display QTE prompt to player with the required dodge type
+            // The client now knows what type of dodge is required (e.g., "jump" or "Q")
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player != null) {
+                mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "QTE: Press " + actionName + " to dodge!"));
+            }
+        }).exceptionally(e -> {
+            // Handle exception, optional
+            context.disconnect(net.minecraft.network.chat.Component.literal("Failed to handle QTE request: " + e.getMessage()));
+            return null;
+        });
+    }
+
 
     public static void endCombat() {
         Minecraft mc = Minecraft.getInstance();

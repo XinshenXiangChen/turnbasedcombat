@@ -9,9 +9,9 @@ import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 
 public record QTEResponsePacket() implements CustomPacketPayload {
 
-    public static final CustomPacketPayload.Type<QTEResponsePacket> TYPE = new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(MODID, "qte_request"));
+    public static final CustomPacketPayload.Type<QTEResponsePacket> TYPE = new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(MODID, "qte_response"));
 
-    // Since QTERequestPacket is a record with no fields, we use StreamCodec.unit
+    // Since QTEResponsePacket is a record with no fields, we use StreamCodec.unit
     // This creates a codec that always encodes/decodes to the same instance
     public static final StreamCodec<ByteBuf, QTEResponsePacket> STREAM_CODEC = StreamCodec.unit(new QTEResponsePacket());
 

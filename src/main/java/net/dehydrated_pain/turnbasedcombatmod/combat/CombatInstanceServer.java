@@ -1,8 +1,11 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
 import net.dehydrated_pain.turnbasedcombatmod.network.EndCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
-import net.dehydrated_pain.turnbasedcombatmod.structures.StructurePlacer;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.DodgeTypes;
+import net.dehydrated_pain.turnbasedcombatmod.structuregen.StructurePlacer;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -25,6 +28,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -417,13 +421,7 @@ public class CombatInstanceServer {
         currentBattleEntity = null;
     }
 
-    public static void sendStartCombatPacket(ServerPlayer player) {
-        PacketDistributor.sendToPlayer(player, new StartCombatPacket());
-    }
 
-    public static void sendEndCombatPacket(ServerPlayer player) {
-        PacketDistributor.sendToPlayer(player, new EndCombatPacket());
-    }
     
     /**
      * Resets chunks by clearing all entities and blocks in the specified area
@@ -572,4 +570,25 @@ public class CombatInstanceServer {
         LOGGER.info("Finished teleporting {} enemies", toTeleport.size());
     }
 
+
+
+    // send and recieve packets stuff
+    public static void sendStartCombatPacket(ServerPlayer player) {
+        PacketDistributor.sendToPlayer(player, new StartCombatPacket());
+    }
+
+    public static void sendEndCombatPacket(ServerPlayer player) {
+        PacketDistributor.sendToPlayer(player, new EndCombatPacket());
+    }
+
+
+    private void sendQTEPacketNetworkHandler(ServerPlayer player, DodgeTypes dodgeType) {
+        PacketDistributor.sendToPlayer(player, new QTERequestPacket(dodgeType));
+    }
+
+
+    public static void qteResponseNetworkHandler(final QTEResponsePacket pkt, final IPayloadContext context) {
+
+    }
 }
+

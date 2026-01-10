@@ -48,7 +48,7 @@ public class StructurePlacer {
         }
 
 
-        STRUCTURE = ResourceLocation.fromNamespaceAndPath(MODID, "test");
+        STRUCTURE = ResourceLocation.fromNamespaceAndPath(MODID, biomeName);
     }
 
     public void place() {
@@ -62,7 +62,7 @@ public class StructurePlacer {
         StructureTemplate template = level.getStructureManager().get(STRUCTURE).orElse(null);
 
         if (template == null) {
-            LOGGER.error("Failed to load structure from resources: {}. Make sure the file exists at data/{}/structure/{}.nbt",
+            LOGGER.error("Failed to load structure from resources: {}. Make sure the file exists at data/{}/structures/{}.nbt",
                     STRUCTURE, MODID, STRUCTURE.getPath());
             return;
         }

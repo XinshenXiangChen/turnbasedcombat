@@ -1,6 +1,8 @@
 package net.dehydrated_pain.turnbasedcombatmod.events;
 
 import net.dehydrated_pain.turnbasedcombatmod.combat.CombatInstanceServer;
+import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.DodgeTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -17,6 +19,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
 
@@ -116,8 +119,10 @@ public class PlayerCombatEvents {
         // Check if attacker is one of the enemies in combat
         if (!combatInstance.isEnemy(attacker.getUUID())) return;
         
-        // Enemy has attacked the player - finish their turn
+
         LOGGER.info("finished enemy turn");
+        // TODO: Determine the appropriate DodgeType based on the attack
+        PacketDistributor.sendToPlayer(player, new QTERequestPacket(DodgeTypes.JUMP));
         combatInstance.finishEnemyTurn();
     }
 
