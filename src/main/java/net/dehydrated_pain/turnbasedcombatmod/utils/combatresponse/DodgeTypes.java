@@ -1,7 +1,6 @@
 package net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse;
 
 public enum DodgeTypes implements DefensiveReactionTypes {
-    JUMP("jump"),
     DODGE("Q");
 
     private final String actionName;

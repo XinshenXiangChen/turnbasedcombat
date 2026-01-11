@@ -6,12 +6,15 @@ import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.DodgeTypes;
 import net.dehydrated_pain.turnbasedcombatmod.structuregen.StructurePlacer;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.ParryTypes;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -60,8 +63,7 @@ public class CombatInstanceServer {
 
 
 
-    // TODO: make the calculation not hardcoded xD
-
+    // TODO: add a timer for mobs to wait a little but before the next mob attacks
 
 
     private static final Integer ENEMY_SEPARATION = 3;
@@ -136,17 +138,13 @@ public class CombatInstanceServer {
         }
 
 
-        if (!entityTurnFinished && (currentBattleEntity.isAlive())) {
-
-            if (currentBattleEntity == null) {
-                entityTurnFinished = true;
-            }
-
+        if (!entityTurnFinished && currentBattleEntity != null && currentBattleEntity.isAlive()) {
             if (currentBattleEntity instanceof ServerPlayer && currentBattleEntity == player) {
                 playerAttack();
             } else {
-                // Only enable attack if not already attacking
-                if (currentBattleEntity instanceof Mob mob && mob.getTarget() == null) {
+                // Enable attack for enemy - always reset state to ensure they can attack
+                if (currentBattleEntity instanceof Mob mob) {
+
                     enemyAttack(currentBattleEntity);
                 }
             }
@@ -156,8 +154,12 @@ public class CombatInstanceServer {
             if (attackerUUID == null) return;
             // Look up the entity from the combat dimension using UUID
             currentBattleEntity = combatServerLevel.getEntity(attackerUUID);
-            if (currentBattleEntity != null) {
+            if (currentBattleEntity != null && currentBattleEntity.isAlive()) {
                 entityTurnFinished = false;
+            } else {
+                // Entity is dead or not found, just return (fail)
+                LOGGER.warn("Entity {} is dead or not found, stopping turn processing", attackerUUID);
+                return;
             }
         }
 
@@ -583,13 +585,28 @@ public class CombatInstanceServer {
     }
 
 
-    private void sendQTEPacketNetworkHandler(ServerPlayer player, DodgeTypes dodgeType) {
-        PacketDistributor.sendToPlayer(player, new QTERequestPacket(dodgeType));
+    private void sendQTEPacketNetworkHandler(ServerPlayer player, ParryTypes parryType) {
+        PacketDistributor.sendToPlayer(player, new QTERequestPacket(parryType));
     }
 
 
     public static void qteResponseNetworkHandler(final QTEResponsePacket pkt, final IPayloadContext context) {
+        // Main thread work
+        context.enqueueWork(() -> {
+            boolean success = pkt.success();
+            ServerPlayer player = (ServerPlayer) context.player();
+            if (player == null) return;
 
+            CombatInstanceServer instance = getCombatInstance(player.getUUID());
+            if (instance != null) {
+                player.sendSystemMessage(Component.literal("Server register a " + success));
+                // Finish enemy turn after QTE response is received
+                instance.finishEnemyTurn();
+            }
+        }).exceptionally(e -> {
+            LOGGER.error("Failed to handle QTE response: {}", e.getMessage());
+            return null;
+        });
     }
 }
 

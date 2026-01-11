@@ -3,6 +3,7 @@ package net.dehydrated_pain.turnbasedcombatmod.events;
 import net.dehydrated_pain.turnbasedcombatmod.combat.CombatInstanceServer;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.DodgeTypes;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.ParryTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -120,10 +121,10 @@ public class PlayerCombatEvents {
         if (!combatInstance.isEnemy(attacker.getUUID())) return;
         
 
-        LOGGER.info("finished enemy turn");
+        LOGGER.info("enemy attacked player, sending QTE request");
         // TODO: Determine the appropriate DodgeType based on the attack
-        PacketDistributor.sendToPlayer(player, new QTERequestPacket(DodgeTypes.JUMP));
-        combatInstance.finishEnemyTurn();
+        PacketDistributor.sendToPlayer(player, new QTERequestPacket(ParryTypes.JUMP));
+        // Don't finish enemy turn here - wait for QTE response
     }
 
 

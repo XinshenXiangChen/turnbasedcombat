@@ -2,6 +2,7 @@ package net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse;
 
 public enum ParryTypes implements DefensiveReactionTypes {
     PARRY("E"),
+    JUMP("jump"),
     CROUCH("SHIFT");
 
     private final String actionName;
