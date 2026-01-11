@@ -99,35 +99,35 @@ public class PlayerCombatEvents {
     }
     
     /**
-     * When attacked in the combat dimension - detect when enemy attacks player and finish their turn
+     * When attacked in the combat dimension - detect when enemy attacks player and initiate parry QTE
      */
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     private static void attackedInCombat(LivingIncomingDamageEvent event) {
-        event.getEntity().sendSystemMessage(Component.literal("You got attacked"));
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
 
-        // Check if player is in combat dimension
         if (!inCombatDimension(player)) return;
         
-        // Get the combat instance for this player
         CombatInstanceServer combatInstance = CombatInstanceServer.getCombatInstance(player.getUUID());
         if (combatInstance == null) return;
         
-        // Get the attacker (source entity)
+        // Skip if we're intentionally applying pending damage (to prevent infinite loop)
+        if (combatInstance.isApplyingPendingDamage()) return;
+
         Entity attacker = event.getSource().getEntity();
         if (attacker == null) return;
-        
-        // Check if attacker is one of the enemies in combat
-        if (!combatInstance.isEnemy(attacker.getUUID())) return;
-        
 
-        LOGGER.info("enemy attacked player, sending QTE request");
-        // TODO: Determine the appropriate DodgeType based on the attack
+        if (!combatInstance.isEnemy(attacker.getUUID())) return;
+
+        event.setCanceled(true);
+        combatInstance.storePendingDamage(event.getSource(), event.getAmount());
+        
+        LOGGER.info("Enemy attacked player, initiating parry QTE. Damage: {}", event.getAmount());
+
+        // TODO: get the attack type somehow probably register all possible attacks and their parry type
         PacketDistributor.sendToPlayer(player, new QTERequestPacket(ParryTypes.JUMP));
-        // Don't finish enemy turn here - wait for QTE response
     }
 
-
+    
 
     private static boolean inCombatDimension(ServerPlayer player) {
         // Target dimension

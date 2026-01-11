@@ -41,9 +41,9 @@ public class CombatInstanceClient {
     private static long qteStartTime = 0;
 
 
-    private static double PARRY_COOLDOWN_TIME = 0.4;
+    private static double PARRY_COOLDOWN_TIME = 0.3;
     private static double parryCooldownTime = 0;
-    private static boolean parryInCooldown = false;
+    private static boolean parryOnCooldown = false;
 
 
 
@@ -88,7 +88,7 @@ public class CombatInstanceClient {
 
         // this is only for the animation, the damage handling is in keypressed event
 
-        if (parryInCooldown) {
+        if (parryOnCooldown) {
             event.getInput().jumping = false;
             event.getInput().shiftKeyDown = false;
 
@@ -196,6 +196,8 @@ public class CombatInstanceClient {
     private static void handleParrySuccess() {
         parried = true;
         qteActive = false;
+        parryOnCooldown = false;
+        parryCooldownTime = 0;
         
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {

@@ -27,8 +27,10 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec2;
+import net.minecraft.world.damagesource.DamageSource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -61,9 +63,19 @@ public class CombatInstanceServer {
     private Map<UUID, BlockPos> enemyOriginalPositions = new HashMap<>(); // [x, y, z]
     private Map<UUID, Vec2> enemyOriginalRot = new HashMap<>();
 
-
+    public boolean sucessfullParry = false;
+    
+    // Store pending damage information for parry mechanic
+    private DamageSource pendingDamageSource = null;
+    private float pendingDamageAmount = 0.0f;
+    private boolean hasPendingDamage = false;
+    private int pendingDamageTicks = 0;
+    private static final int PARRY_RESPONSE_TIMEOUT_TICKS = 40; // 2 seconds at 20 TPS
+    // Flag to prevent event handler from canceling damage when we're intentionally applying pending damage
+    private boolean isApplyingPendingDamage = false;
 
     // TODO: add a timer for mobs to wait a little but before the next mob attacks
+
 
 
     private static final Integer ENEMY_SEPARATION = 3;
@@ -122,6 +134,8 @@ public class CombatInstanceServer {
     public static void onServerTick(ServerTickEvent.Post event) {
         // Run turnBasedCombat() every tick for all active combat instances
         activeCombatInstances.values().forEach(CombatInstanceServer::turnBasedCombat);
+        // Process pending damage timeouts
+        activeCombatInstances.values().forEach(CombatInstanceServer::processPendingDamageTimeout);
         // Remove instances where combat has ended (player is no longer in combat dimension)
         activeCombatInstances.entrySet().removeIf(entry -> {
             CombatInstanceServer instance = entry.getValue();
@@ -592,21 +606,90 @@ public class CombatInstanceServer {
 
     public static void qteResponseNetworkHandler(final QTEResponsePacket pkt, final IPayloadContext context) {
         // Main thread work
-        context.enqueueWork(() -> {
-            boolean success = pkt.success();
-            ServerPlayer player = (ServerPlayer) context.player();
-            if (player == null) return;
 
-            CombatInstanceServer instance = getCombatInstance(player.getUUID());
-            if (instance != null) {
-                player.sendSystemMessage(Component.literal("Server register a " + success));
-                // Finish enemy turn after QTE response is received
-                instance.finishEnemyTurn();
+        boolean success = pkt.success();
+        ServerPlayer player = (ServerPlayer) context.player();
+        if (player == null) return;
+
+        CombatInstanceServer instance = getCombatInstance(player.getUUID());
+        if (instance != null) {
+            player.sendSystemMessage(Component.literal("Server register a " + success));
+            instance.sucessfullParry = success;
+
+            if (instance.hasPendingDamage) {
+                instance.pendingDamageTicks = 0;
+
+                if (success) {
+                    // Parry succeeded - cancel damage
+                    LOGGER.info("Parry successful - damage cancelled");
+                    instance.hasPendingDamage = false;
+                    instance.pendingDamageSource = null;
+                    instance.pendingDamageAmount = 0.0f;
+                } else {
+                    // Parry failed - apply stored damage
+                    if (instance.pendingDamageSource != null && player.isAlive()) {
+                        instance.isApplyingPendingDamage = true;
+                        try {
+                            player.hurt(instance.pendingDamageSource, instance.pendingDamageAmount);
+                            LOGGER.info("Parry failed - applied {} damage to player", instance.pendingDamageAmount);
+                        } finally {
+                            instance.isApplyingPendingDamage = false;
+                        }
+                    }
+                    instance.hasPendingDamage = false;
+                    instance.pendingDamageSource = null;
+                    instance.pendingDamageAmount = 0.0f;
+                }
             }
-        }).exceptionally(e -> {
-            LOGGER.error("Failed to handle QTE response: {}", e.getMessage());
-            return null;
-        });
+
+            instance.finishEnemyTurn();
+        }
+    }
+    
+    /**
+     * Store pending damage information for parry mechanic
+     */
+    public void storePendingDamage(DamageSource damageSource, float damageAmount) {
+        this.pendingDamageSource = damageSource;
+        this.pendingDamageAmount = damageAmount;
+        this.hasPendingDamage = true;
+        this.pendingDamageTicks = PARRY_RESPONSE_TIMEOUT_TICKS;
+        this.sucessfullParry = false; // Reset parry state for new attack
+    }
+    
+    /**
+     * Check if we're currently applying pending damage (to prevent event handler from canceling it)
+     */
+    public boolean isApplyingPendingDamage() {
+        return isApplyingPendingDamage;
+    }
+    
+    /**
+     * Process pending damage timeout - if player doesn't respond to QTE in time, apply damage
+     */
+    private void processPendingDamageTimeout() {
+        if (hasPendingDamage && pendingDamageTicks > 0) {
+            pendingDamageTicks--;
+            if (pendingDamageTicks <= 0) {
+                // Timeout - apply damage if parry didn't succeed
+                if (!sucessfullParry && pendingDamageSource != null && player != null && player.isAlive()) {
+                    isApplyingPendingDamage = true;
+                    try {
+                        player.hurt(pendingDamageSource, pendingDamageAmount);
+                        LOGGER.info("Parry QTE timeout - applied {} damage to player", pendingDamageAmount);
+                    } finally {
+                        isApplyingPendingDamage = false;
+                    }
+                } else if (sucessfullParry) {
+                    LOGGER.info("Parry QTE timeout but parry was successful - damage cancelled");
+                }
+                // Clear pending damage
+                hasPendingDamage = false;
+                pendingDamageSource = null;
+                pendingDamageAmount = 0.0f;
+                pendingDamageTicks = 0;
+            }
+        }
     }
 }
 
