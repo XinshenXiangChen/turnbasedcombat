@@ -4,7 +4,6 @@ import net.dehydrated_pain.turnbasedcombatmod.network.EndCombatPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
-import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.DodgeTypes;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.ParryTypes;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
@@ -33,7 +32,8 @@ public class CombatInstanceClient {
 
 
     // Each client only handles their own player, so static is safe here
-    private static final double REACTION_TIMEOUT_TIME = 0.15;
+    private static final double PARRY_TIMEOUT_TIME = 0.15;
+    private static final double DODGE_TIMEOUT_TIME = 0.2;
     private static double reactionTimer = 0.0;
     private static boolean parried = false;
     private static boolean qteActive = false;
@@ -41,9 +41,10 @@ public class CombatInstanceClient {
     private static long qteStartTime = 0;
 
 
-    private static double PARRY_COOLDOWN_TIME = 0.3;
-    private static double parryCooldownTime = 0;
-    private static boolean parryOnCooldown = false;
+    // Shared cooldown for both parry and dodge
+    private static double DEFENSE_COOLDOWN_TIME = 1;
+    private static double defenseCooldownTime = 0;
+    private static boolean defenseOnCooldown = false;
 
 
 
@@ -68,8 +69,17 @@ public class CombatInstanceClient {
             double elapsedSeconds = (System.currentTimeMillis() - qteStartTime) / 1000.0;
             reactionTimer = elapsedSeconds;
             
-            if (reactionTimer >= REACTION_TIMEOUT_TIME) {
+            if (reactionTimer >= DODGE_TIMEOUT_TIME) {
                 handleQTETimeout();
+            }
+        }
+
+        // Update defense cooldown (shared for parry and dodge)
+        if (defenseOnCooldown && inCombat) {
+            defenseCooldownTime -= 1.0 / 20.0; // Decrement by 1 tick (assuming 20 TPS)
+            if (defenseCooldownTime <= 0) {
+                defenseOnCooldown = false;
+                defenseCooldownTime = 0;
             }
         }
     }
@@ -88,10 +98,9 @@ public class CombatInstanceClient {
 
         // this is only for the animation, the damage handling is in keypressed event
 
-        if (parryOnCooldown) {
+        if (defenseOnCooldown) {
             event.getInput().jumping = false;
             event.getInput().shiftKeyDown = false;
-
         }
     }
 
@@ -145,11 +154,6 @@ public class CombatInstanceClient {
             reactionTimer = 0.0;
             qteStartTime = System.currentTimeMillis();
 
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player != null) {
-                mc.player.sendSystemMessage(Component.literal(
-                    "QTE: Press " + actionName + " to parry! (0.1s)"));
-            }
         }).exceptionally(e -> {
  
             context.disconnect(Component.literal("Failed to handle QTE request: " + e.getMessage()));
@@ -159,21 +163,55 @@ public class CombatInstanceClient {
 
     @SubscribeEvent
     public static void onKeyPressed(InputEvent.Key event) {
-        if (!qteActive || parried) return; 
+        if (!inCombat) return;
         
         int key = event.getKey();
-        ParryTypes requiredType = activeParryType;
-        
-        if (requiredType == null) return;
-        
-
         Boolean isParry = getReactionTypeForKey(key);
-        if (isParry == null) return; // meanx that the key pressed is not a parry or d0dge type
         
+        // If it's a parry/dodge key, check if we should trigger cooldown
+        if (isParry != null) {
+            if (defenseOnCooldown) {
+                return;
+            }
 
-        String requiredAction = requiredType.getActionName();
-        if (isKeyForAction(key, requiredAction) && reactionTimer < REACTION_TIMEOUT_TIME) {
-            handleDefenseSuccess(isParry);
+            if (!qteActive) {
+                defenseOnCooldown = true;
+                defenseCooldownTime = DEFENSE_COOLDOWN_TIME;
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.player != null) {
+                    String actionType = isParry ? "Parry" : "Dodge";
+                    mc.player.sendSystemMessage(Component.literal(actionType + " used! Cooldown: " + DEFENSE_COOLDOWN_TIME + "s"));
+                }
+                return;
+            }
+            
+            // If in QTE, handle the QTE response
+            if (qteActive && !parried) {
+                ParryTypes requiredType = activeParryType;
+                if (requiredType == null) return;
+                
+                String requiredAction = requiredType.getActionName();
+                
+                boolean isValidKey = false;
+                
+                if (isParry == null) {
+                    return;
+                } else if (!isParry) {
+                    isValidKey = true;
+                } else {
+                    isValidKey = isKeyForAction(key, requiredAction);
+                }
+                
+                if (isValidKey) {
+                    boolean isDodgeAction = !isParry; // If isParry is false, it's a dodge
+                    double timeoutWindow = isDodgeAction ? DODGE_TIMEOUT_TIME : PARRY_TIMEOUT_TIME;
+                    
+                    // Check if within the timeout window
+                    if (reactionTimer < timeoutWindow) {
+                        handleDefenseSuccess(isParry);
+                    }
+                }
+            }
         }
     }
 
@@ -206,21 +244,17 @@ public class CombatInstanceClient {
         return false;
     }
     
-    /**
-     * Handles successful parry - player pressed the correct key in time
-     */
+
     private static void handleDefenseSuccess(boolean isParry) {
         parried = true;
         qteActive = false;
-        parryOnCooldown = false;
-        parryCooldownTime = 0;
         
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null) {
-            mc.player.sendSystemMessage(Component.literal("Parry Successful!"));
-        }
+        // Set cooldown after successful defense
+        defenseOnCooldown = false;
+        defenseCooldownTime = 0;
+
         
-        // Send response packet to server (success = true, isParry = true since activeParryType is ParryTypes)
+        // Send response packet to server (success = true, isParry indicates the type)
         sendParrySuccess(parried, isParry);
         
 
@@ -228,9 +262,7 @@ public class CombatInstanceClient {
     }
 
     
-    /**
-     * Handles QTE timeout - player didn't parry in time
-     */
+
     private static void handleQTETimeout() {
         parried = false;
         qteActive = false;
@@ -240,17 +272,13 @@ public class CombatInstanceClient {
             mc.player.sendSystemMessage(Component.literal("Parry Failed! You didn't respond in time."));
         }
         
-        // Determine if it was a parry or dodge (currently always parry since activeParryType is ParryTypes)
-        boolean isParry = true; // activeParryType is ParryTypes, so it's always a parry
+        boolean isParry = true; 
         clearQTE();
         
-        // Send response packet to server (success = false)
         sendParrySuccess(parried, isParry);
     }
     
-    /**
-     * Clears the QTE state
-     */
+
     private static void clearQTE() {
         activeParryType = null;
         reactionTimer = 0.0;
@@ -266,6 +294,9 @@ public class CombatInstanceClient {
         clearQTE();
         parried = false;
         qteActive = false;
+        
+        defenseOnCooldown = false;
+        defenseCooldownTime = 0;
     }
     
     /**
