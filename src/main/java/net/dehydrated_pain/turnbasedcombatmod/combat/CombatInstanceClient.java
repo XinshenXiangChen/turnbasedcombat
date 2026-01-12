@@ -151,7 +151,7 @@ public class CombatInstanceClient {
                     "QTE: Press " + actionName + " to parry! (0.1s)"));
             }
         }).exceptionally(e -> {
-            // Handle exception, optional
+ 
             context.disconnect(Component.literal("Failed to handle QTE request: " + e.getMessage()));
             return null;
         });
@@ -159,41 +159,57 @@ public class CombatInstanceClient {
 
     @SubscribeEvent
     public static void onKeyPressed(InputEvent.Key event) {
-
-
-
         if (!qteActive || parried) return; 
         
-        int key = event.getKey(); // GLFW key code
-
-        // set parry/dodge timer on cd
-
+        int key = event.getKey();
         ParryTypes requiredType = activeParryType;
         
         if (requiredType == null) return;
         
-        String actionName = requiredType.getActionName();
-        boolean correctKeyPressed = false;
 
-        // TODO this could be done much better
-        if (actionName.equalsIgnoreCase("E") && key == GLFW.GLFW_KEY_E) {
-            correctKeyPressed = true;
-        } else if (actionName.equalsIgnoreCase("SHIFT") && (key == GLFW.GLFW_KEY_LEFT_SHIFT || key == GLFW.GLFW_KEY_RIGHT_SHIFT)) {
-            correctKeyPressed = true;
-        } else if (actionName.equalsIgnoreCase("jump") && key == GLFW.GLFW_KEY_SPACE) {
-            correctKeyPressed = true;
+        Boolean isParry = getReactionTypeForKey(key);
+        if (isParry == null) return; // meanx that the key pressed is not a parry or d0dge type
+        
+
+        String requiredAction = requiredType.getActionName();
+        if (isKeyForAction(key, requiredAction) && reactionTimer < REACTION_TIMEOUT_TIME) {
+            handleDefenseSuccess(isParry);
+        }
+    }
+
+    private static Boolean getReactionTypeForKey(int key) {
+
+        if (key == GLFW.GLFW_KEY_E || 
+            key == GLFW.GLFW_KEY_LEFT_SHIFT || 
+            key == GLFW.GLFW_KEY_RIGHT_SHIFT || 
+            key == GLFW.GLFW_KEY_SPACE) {
+            return true;
         }
         
-        // If correct key was pressed and within time limit
-        if (correctKeyPressed && reactionTimer < REACTION_TIMEOUT_TIME) {
-            handleParrySuccess();
+        // Dodge keys
+        if (key == GLFW.GLFW_KEY_Q) {
+            return false;
         }
+        
+        return null; // Not a defensive reaction key
+    }
+    
+    /**
+     * Checks if the pressed key matches the required action name
+     */
+    private static boolean isKeyForAction(int key, String actionName) {
+        if (actionName.equalsIgnoreCase("E") && key == GLFW.GLFW_KEY_E) return true;
+        if (actionName.equalsIgnoreCase("SHIFT") && (key == GLFW.GLFW_KEY_LEFT_SHIFT || key == GLFW.GLFW_KEY_RIGHT_SHIFT)) return true;
+        if (actionName.equalsIgnoreCase("jump") && key == GLFW.GLFW_KEY_SPACE) return true;
+        if (actionName.equalsIgnoreCase("Q") && key == GLFW.GLFW_KEY_Q) return true;
+        
+        return false;
     }
     
     /**
      * Handles successful parry - player pressed the correct key in time
      */
-    private static void handleParrySuccess() {
+    private static void handleDefenseSuccess(boolean isParry) {
         parried = true;
         qteActive = false;
         parryOnCooldown = false;
@@ -204,12 +220,13 @@ public class CombatInstanceClient {
             mc.player.sendSystemMessage(Component.literal("Parry Successful!"));
         }
         
-        // Send response packet to server (success = true)
-        sendParrySuccess(parried);
+        // Send response packet to server (success = true, isParry = true since activeParryType is ParryTypes)
+        sendParrySuccess(parried, isParry);
         
 
         clearQTE();
     }
+
     
     /**
      * Handles QTE timeout - player didn't parry in time
@@ -223,10 +240,12 @@ public class CombatInstanceClient {
             mc.player.sendSystemMessage(Component.literal("Parry Failed! You didn't respond in time."));
         }
         
+        // Determine if it was a parry or dodge (currently always parry since activeParryType is ParryTypes)
+        boolean isParry = true; // activeParryType is ParryTypes, so it's always a parry
         clearQTE();
         
         // Send response packet to server (success = false)
-        sendParrySuccess(parried);
+        sendParrySuccess(parried, isParry);
     }
     
     /**
@@ -263,7 +282,7 @@ public class CombatInstanceClient {
         return qteActive;
     }
 
-    private static void sendParrySuccess(Boolean success) {
-        PacketDistributor.sendToServer(new QTEResponsePacket(success));
+    private static void sendParrySuccess(Boolean success, boolean isParry) {
+        PacketDistributor.sendToServer(new QTEResponsePacket(success, isParry));
     }
 }

@@ -608,12 +608,14 @@ public class CombatInstanceServer {
         // Main thread work
 
         boolean success = pkt.success();
+        boolean isParry = pkt.isParry();
         ServerPlayer player = (ServerPlayer) context.player();
         if (player == null) return;
 
         CombatInstanceServer instance = getCombatInstance(player.getUUID());
         if (instance != null) {
-            player.sendSystemMessage(Component.literal("Server register a " + success));
+            String reactionType = isParry ? "parry" : "dodge";
+            player.sendSystemMessage(Component.literal("Server register a " + success + " (" + reactionType + ")"));
             instance.sucessfullParry = success;
 
             if (instance.hasPendingDamage) {
