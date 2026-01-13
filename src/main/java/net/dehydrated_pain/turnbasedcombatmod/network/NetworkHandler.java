@@ -22,11 +22,17 @@ public class NetworkHandler {
                 StartCombatPacket.STREAM_CODEC,
                 CombatInstanceClient::startCombatNetworkHandler
         );
-        
+
         registrar.playToClient(
                 EndCombatPacket.TYPE,
                 EndCombatPacket.STREAM_CODEC,
                 CombatInstanceClient::endCombatNetworkHandler
+        );
+
+        registrar.playToClient(
+                PlayerTurnPacket.TYPE,
+                PlayerTurnPacket.STREAM_CODEC,
+                CombatInstanceClient::playerTurnNetworkHandler
         );
 
         registrar.playToClient(
@@ -42,6 +48,16 @@ public class NetworkHandler {
                 CombatInstanceServer::qteResponseNetworkHandler
         );
 
+        registrar.playToServer(
+                EndPlayerTurnPacket.TYPE,
+                EndPlayerTurnPacket.STREAM_CODEC,
+                CombatInstanceServer::endPlayerTurnNetworkHandler
+        );
+
+
+
 
     }
 }
+
+
