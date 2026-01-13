@@ -1,6 +1,8 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
 import net.dehydrated_pain.turnbasedcombatmod.network.EndCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.EndPlayerTurnPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.PlayerTurnPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
@@ -19,6 +21,8 @@ import net.neoforged.neoforge.client.event.CalculateDetachedCameraDistanceEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.minecraft.client.gui.GuiGraphics;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.lwjgl.glfw.GLFW;
@@ -29,6 +33,7 @@ import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 @EventBusSubscriber(modid = MODID, value = Dist.CLIENT)
 public class CombatInstanceClient {
     public static boolean inCombat = false;
+    public static boolean isPlayerTurn = false;
 
 
     // Each client only handles their own player, so static is safe here
@@ -137,6 +142,17 @@ public class CombatInstanceClient {
                 .exceptionally(e -> {
                     // Handle exception, optional
                     context.disconnect(net.minecraft.network.chat.Component.literal("Failed to end combat: " + e.getMessage()));
+                    return null;
+                });
+    }
+
+    public static void playerTurnNetworkHandler(final PlayerTurnPacket pkt, final IPayloadContext context) {
+        // Main thread work
+        context.enqueueWork(() -> {
+                    isPlayerTurn = true;
+                })
+                .exceptionally(e -> {
+                    context.disconnect(Component.literal("Failed to handle player turn: " + e.getMessage()));
                     return null;
                 });
     }
@@ -288,6 +304,7 @@ public class CombatInstanceClient {
     public static void endCombat() {
         Minecraft mc = Minecraft.getInstance();
         inCombat = false;
+        isPlayerTurn = false;
         mc.options.setCameraType(CameraType.FIRST_PERSON);
         
         // Clear QTE state when combat ends
@@ -315,5 +332,38 @@ public class CombatInstanceClient {
 
     private static void sendParrySuccess(Boolean success, boolean isParry) {
         PacketDistributor.sendToServer(new QTEResponsePacket(success, isParry));
+    }
+
+    @SubscribeEvent
+    public static void onRenderGui(RenderGuiEvent.Post event) {
+        if (!inCombat || !isPlayerTurn) return;
+        
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.font == null) return;
+        
+        GuiGraphics guiGraphics = event.getGuiGraphics();
+        int width = event.getGuiGraphics().guiWidth();
+        int height = event.getGuiGraphics().guiHeight();
+        
+        // Simple text in center of screen
+        String text = "Right Click to Attack";
+        int textWidth = mc.font.width(text);
+        int x = (width - textWidth) / 2;
+        int y = height / 2 - 20;
+        
+        guiGraphics.drawString(mc.font, text, x, y, 0xFFFFFF, true);
+    }
+
+    @SubscribeEvent
+    public static void onMouseClick(InputEvent.InteractionKeyMappingTriggered event) {
+        if (!inCombat || !isPlayerTurn) return;
+        
+        // Right click (use item)
+        if (event.isUseItem()) {
+            isPlayerTurn = false;
+            // Send attack packet to server
+            PacketDistributor.sendToServer(new EndPlayerTurnPacket());
+            event.setCanceled(true);
+        }
     }
 }

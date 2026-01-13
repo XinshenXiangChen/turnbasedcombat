@@ -1,10 +1,11 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
 import net.dehydrated_pain.turnbasedcombatmod.network.EndCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.EndPlayerTurnPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.PlayerTurnPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
-import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.DodgeTypes;
 import net.dehydrated_pain.turnbasedcombatmod.structuregen.StructurePlacer;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.ParryTypes;
 import net.minecraft.client.CameraType;
@@ -14,7 +15,6 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -30,7 +30,6 @@ import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.damagesource.DamageSource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -87,6 +86,7 @@ public class CombatInstanceServer {
     private Queue<UUID> battleQueue = new LinkedList<>();
     Entity currentBattleEntity;
     boolean entityTurnFinished = true;
+    boolean hasSentPlayerTurnPacket = false;
 
     public CombatInstanceServer(ServerPlayer _player, List<Entity> _enemies, Entity firstAttacker, Biome biome) {
 
@@ -154,11 +154,15 @@ public class CombatInstanceServer {
 
         if (!entityTurnFinished && currentBattleEntity != null && currentBattleEntity.isAlive()) {
             if (currentBattleEntity instanceof ServerPlayer && currentBattleEntity == player) {
-                playerAttack();
+                // Player's turn - send packet if not already sent
+                if (!hasSentPlayerTurnPacket) {
+                    sendPlayerTurnPacket(player);
+                    hasSentPlayerTurnPacket = true;
+                }
+                // Wait for player to attack (EndPlayerTurnPacket will finish the turn)
             } else {
                 // Enable attack for enemy - always reset state to ensure they can attack
                 if (currentBattleEntity instanceof Mob mob) {
-
                     enemyAttack(currentBattleEntity);
                 }
             }
@@ -170,6 +174,7 @@ public class CombatInstanceServer {
             currentBattleEntity = combatServerLevel.getEntity(attackerUUID);
             if (currentBattleEntity != null && currentBattleEntity.isAlive()) {
                 entityTurnFinished = false;
+                hasSentPlayerTurnPacket = false; // Reset flag for new turn
             } else {
                 // Entity is dead or not found, just return (fail)
                 LOGGER.warn("Entity {} is dead or not found, stopping turn processing", attackerUUID);
@@ -180,9 +185,8 @@ public class CombatInstanceServer {
     }
     private void playerAttack() {
         LOGGER.info("playerturn");
-        entityTurnFinished = true;
-
-        battleQueue.offer(player.getUUID());
+        // Don't finish turn immediately - wait for player to attack
+        // The turn will finish when EndPlayerTurnPacket is received
     }
 
 
@@ -598,6 +602,10 @@ public class CombatInstanceServer {
         PacketDistributor.sendToPlayer(player, new EndCombatPacket());
     }
 
+    public static void sendPlayerTurnPacket(ServerPlayer player) {
+        PacketDistributor.sendToPlayer(player, new PlayerTurnPacket());
+    }
+
 
     private void sendQTEPacketNetworkHandler(ServerPlayer player, ParryTypes parryType) {
         PacketDistributor.sendToPlayer(player, new QTERequestPacket(parryType));
@@ -647,6 +655,22 @@ public class CombatInstanceServer {
             instance.finishEnemyTurn();
         }
     }
+
+    public static void endPlayerTurnNetworkHandler(final EndPlayerTurnPacket pkt, final IPayloadContext context) {
+        context.enqueueWork(() -> {
+            ServerPlayer player = (ServerPlayer) context.player();
+            if (player == null) return;
+
+            CombatInstanceServer instance = getCombatInstance(player.getUUID());
+            if (instance != null) {
+                // Finish player's turn
+                instance.entityTurnFinished = true;
+                instance.hasSentPlayerTurnPacket = false;
+                instance.battleQueue.offer(player.getUUID());
+                LOGGER.info("Player {} finished their turn", player.getName().getString());
+            }
+        });
+    }
     
     /**
      * Store pending damage information for parry mechanic
@@ -694,4 +718,5 @@ public class CombatInstanceServer {
         }
     }
 }
+
 
