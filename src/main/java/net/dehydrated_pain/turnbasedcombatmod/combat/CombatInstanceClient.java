@@ -6,6 +6,7 @@ import net.dehydrated_pain.turnbasedcombatmod.network.PlayerTurnPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.ui.CombatUIConfig;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.ParryTypes;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
@@ -111,15 +112,14 @@ public class CombatInstanceClient {
 
     @SubscribeEvent
     public static void onCalculateCameraDistance(CalculateDetachedCameraDistanceEvent event) {
-        if (!inCombat) event.setDistance(8.0F);
+        if (!inCombat) event.setDistance(4.0F);
         // Set camera distance farther (default is usually around 4.0)
-        else event.setDistance(8.0F);
+        else event.setDistance(4.0F);
     }
 
 
     public static void startCombatNetworkHandler(final StartCombatPacket pkt, final IPayloadContext context) {
         // Network thread: we only set flags or read packet data if needed
-        // (StartCombatPacket has no data, so nothing to do here)
 
         // Main thread work
         context.enqueueWork(() -> {
@@ -339,19 +339,19 @@ public class CombatInstanceClient {
         if (!inCombat || !isPlayerTurn) return;
         
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.font == null) return;
+        if (mc.player == null) return;
         
         GuiGraphics guiGraphics = event.getGuiGraphics();
-        int width = event.getGuiGraphics().guiWidth();
-        int height = event.getGuiGraphics().guiHeight();
+        int screenWidth = event.getGuiGraphics().guiWidth();
+        int screenHeight = event.getGuiGraphics().guiHeight();
         
-        // Simple text in center of screen
-        String text = "Right Click to Attack";
-        int textWidth = mc.font.width(text);
-        int x = (width - textWidth) / 2;
-        int y = height / 2 - 20;
+        // Load UI design from config
+        CombatUIConfig.TurnIndicatorConfig config = CombatUIConfig.getTurnIndicator();
         
-        guiGraphics.drawString(mc.font, text, x, y, 0xFFFFFF, true);
+        int x = (screenWidth - config.width) / 2;
+        int y = (screenHeight - config.height) / 2;
+
+        guiGraphics.blit(config.image, x, y, 0, 0, config.width, config.height, config.width, config.height);
     }
 
     @SubscribeEvent
