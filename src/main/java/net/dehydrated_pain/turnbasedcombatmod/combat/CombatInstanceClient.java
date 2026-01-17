@@ -6,15 +6,19 @@ import net.dehydrated_pain.turnbasedcombatmod.network.PlayerTurnPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.utils.playerturn.EnemyInfo;
 import net.dehydrated_pain.turnbasedcombatmod.ui.CombatUIConfig;
-import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.ParryTypes;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
+import net.minecraft.client.Camera;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -23,10 +27,14 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.event.ViewportEvent;
 import net.minecraft.client.gui.GuiGraphics;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 
@@ -35,6 +43,15 @@ import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 public class CombatInstanceClient {
     public static boolean inCombat = false;
     public static boolean isPlayerTurn = false;
+    
+    // Enemy selection state
+    public static List<EnemyInfo> enemyInfoList = new ArrayList<>();
+    public static int selectedEnemyIndex = 0;
+    public static boolean isSelectingEnemy = false;
+    
+    private static final double CAMERA_OFFSET_X = -3.0;
+    private static final double CAMERA_OFFSET_Y = 1.5;
+    private static final double CAMERA_OFFSET_Z = 0.0;
 
 
     // Each client only handles their own player, so static is safe here
@@ -88,6 +105,66 @@ public class CombatInstanceClient {
                 defenseCooldownTime = 0;
             }
         }
+    }
+    
+    @SubscribeEvent
+    public static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
+        if (!isSelectingEnemy || !inCombat || enemyInfoList.isEmpty()) return;
+        if (selectedEnemyIndex < 0 || selectedEnemyIndex >= enemyInfoList.size()) return;
+        
+        EnemyInfo selectedEnemy = enemyInfoList.get(selectedEnemyIndex);
+        BlockPos enemyPos = selectedEnemy.enemyPosition();
+        
+        Vec3 cameraPos = new Vec3(
+            enemyPos.getX() + 0.5 + CAMERA_OFFSET_X,
+            enemyPos.getY() + CAMERA_OFFSET_Y,
+            enemyPos.getZ() + 0.5 + CAMERA_OFFSET_Z
+        );
+        
+        Vec3 targetPos = new Vec3(
+            enemyPos.getX() + 0.5,
+            enemyPos.getY() + 1.0,
+            enemyPos.getZ() + 0.5
+        );
+        
+        Vec3 direction = targetPos.subtract(cameraPos).normalize();
+        double horizontalDistance = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
+        float yRot = (float) (Math.atan2(-direction.x, direction.z) * (180.0 / Math.PI));
+        float xRot = (float) (Math.atan2(-direction.y, horizontalDistance) * (180.0 / Math.PI));
+        
+        event.setYaw(yRot);
+        event.setPitch(xRot);
+        
+        Camera camera = event.getCamera();
+        camera.setPosition(cameraPos);
+    }
+    
+    public static void selectEnemy(int index) {
+        if (enemyInfoList.isEmpty()) return;
+        
+        selectedEnemyIndex = Math.max(0, Math.min(index, enemyInfoList.size() - 1));
+        
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null) {
+            mc.player.sendSystemMessage(Component.literal("Selected enemy " + (selectedEnemyIndex + 1) + "/" + enemyInfoList.size()));
+        }
+    }
+    
+    public static void selectPreviousEnemy() {
+        if (enemyInfoList.isEmpty() || selectedEnemyIndex <= 0) return;
+        selectEnemy(selectedEnemyIndex - 1);
+    }
+    
+    public static void selectNextEnemy() {
+        if (enemyInfoList.isEmpty() || selectedEnemyIndex >= enemyInfoList.size() - 1) return;
+        selectEnemy(selectedEnemyIndex + 1);
+    }
+    
+    public static EnemyInfo getSelectedEnemy() {
+        if (enemyInfoList.isEmpty() || selectedEnemyIndex < 0 || selectedEnemyIndex >= enemyInfoList.size()) {
+            return null;
+        }
+        return enemyInfoList.get(selectedEnemyIndex);
     }
     
     @SubscribeEvent
@@ -150,6 +227,9 @@ public class CombatInstanceClient {
         // Main thread work
         context.enqueueWork(() -> {
                     isPlayerTurn = true;
+                    isSelectingEnemy = false; // Reset selection mode when turn starts
+                    enemyInfoList = new ArrayList<>(pkt.enemyInfoList());
+                    selectedEnemyIndex = 0; // Start with first enemy (leftmost)
                 })
                 .exceptionally(e -> {
                     context.disconnect(Component.literal("Failed to handle player turn: " + e.getMessage()));
@@ -181,7 +261,20 @@ public class CombatInstanceClient {
     public static void onKeyPressed(InputEvent.Key event) {
         if (!inCombat) return;
         
+        if (event.getAction() != GLFW.GLFW_PRESS) return;
+        
         int key = event.getKey();
+        
+        if (isSelectingEnemy) {
+            if (key == GLFW.GLFW_KEY_N) {
+                selectPreviousEnemy();
+                return;
+            } else if (key == GLFW.GLFW_KEY_M) {
+                selectNextEnemy();
+                return;
+            }
+        }
+        
         Boolean isParry = getReactionTypeForKey(key);
         
         // If it's a parry/dodge key, check if we should trigger cooldown
@@ -305,6 +398,9 @@ public class CombatInstanceClient {
         Minecraft mc = Minecraft.getInstance();
         inCombat = false;
         isPlayerTurn = false;
+        isSelectingEnemy = false;
+        enemyInfoList.clear();
+        selectedEnemyIndex = 0;
         mc.options.setCameraType(CameraType.FIRST_PERSON);
         
         // Clear QTE state when combat ends
@@ -352,17 +448,33 @@ public class CombatInstanceClient {
         int y = (screenHeight - config.height) / 2;
 
         guiGraphics.blit(config.image, x, y, 0, 0, config.width, config.height, config.width, config.height);
+        
+        // Show enemy selection indicator if in selection mode
+        if (isSelectingEnemy && !enemyInfoList.isEmpty()) {
+            String selectionText = "Select Enemy: " + (selectedEnemyIndex + 1) + "/" + enemyInfoList.size() + " [J] <- -> [L]";
+            int textWidth = mc.font.width(selectionText);
+            guiGraphics.drawString(mc.font, selectionText, (screenWidth - textWidth) / 2, screenHeight - 40, 0xFFFFFF);
+        }
     }
 
     @SubscribeEvent
     public static void onMouseClick(InputEvent.InteractionKeyMappingTriggered event) {
         if (!inCombat || !isPlayerTurn) return;
         
-        // Right click (use item)
         if (event.isUseItem()) {
-            isPlayerTurn = false;
-            // Send attack packet to server
-            PacketDistributor.sendToServer(new EndPlayerTurnPacket());
+            Minecraft mc = Minecraft.getInstance();
+            if (!isSelectingEnemy) {
+                isSelectingEnemy = true;
+                selectedEnemyIndex = 0;
+                
+                if (mc.player != null && !enemyInfoList.isEmpty()) {
+                    mc.player.sendSystemMessage(Component.literal("Selecting enemy... Use [J]/[L] to switch, Right-click to confirm"));
+                }
+            } else {
+                isPlayerTurn = false;
+                isSelectingEnemy = false;
+                PacketDistributor.sendToServer(new EndPlayerTurnPacket());
+            }
             event.setCanceled(true);
         }
     }

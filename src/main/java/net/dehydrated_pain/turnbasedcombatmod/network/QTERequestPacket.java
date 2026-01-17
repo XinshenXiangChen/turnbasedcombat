@@ -2,7 +2,7 @@ package net.dehydrated_pain.turnbasedcombatmod.network;
 
 import io.netty.buffer.ByteBuf;
 
-import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.ParryTypes;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;

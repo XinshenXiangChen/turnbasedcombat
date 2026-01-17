@@ -1,4 +1,4 @@
-package net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse;
+package net.dehydrated_pain.turnbasedcombatmod.utils.combat;
 
 public enum ParryTypes implements DefensiveReactionTypes {
     PARRY("E"),

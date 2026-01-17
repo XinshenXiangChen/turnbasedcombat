@@ -6,8 +6,9 @@ import net.dehydrated_pain.turnbasedcombatmod.network.PlayerTurnPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.utils.playerturn.EnemyInfo;
 import net.dehydrated_pain.turnbasedcombatmod.structuregen.StructurePlacer;
-import net.dehydrated_pain.turnbasedcombatmod.utils.combatresponse.ParryTypes;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -602,8 +603,21 @@ public class CombatInstanceServer {
         PacketDistributor.sendToPlayer(player, new EndCombatPacket());
     }
 
-    public static void sendPlayerTurnPacket(ServerPlayer player) {
-        PacketDistributor.sendToPlayer(player, new PlayerTurnPacket());
+    public void sendPlayerTurnPacket(ServerPlayer player) {
+        // Get all alive enemies' info to send to the client
+        List<EnemyInfo> enemyInfoList = new ArrayList<>();
+        for (UUID enemyUUID : enemyUUIDs) {
+            Entity enemy = combatServerLevel.getEntity(enemyUUID);
+            if (enemy != null && enemy.isAlive()) {
+                enemyInfoList.add(new EnemyInfo(enemyUUID, enemy.blockPosition()));
+            }
+        }
+        
+        if (!enemyInfoList.isEmpty()) {
+            PacketDistributor.sendToPlayer(player, new PlayerTurnPacket(enemyInfoList));
+        } else {
+            LOGGER.warn("No alive enemies found to send in PlayerTurnPacket");
+        }
     }
 
 
