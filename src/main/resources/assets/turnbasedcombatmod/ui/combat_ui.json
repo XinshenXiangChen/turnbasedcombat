@@ -1,0 +1,7 @@
+{
+  "combat_skill_button": {
+    "image": "turnbasedcombatmod:textures/gui/combat_skill_button.png",
+    "width": 64,
+    "height": 64
+  }
+}
