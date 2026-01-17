@@ -20,6 +20,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.CalculateDetachedCameraDistanceEvent;
@@ -107,36 +108,18 @@ public class CombatInstanceClient {
         }
     }
     
-    @SubscribeEvent
+
     public static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
-        if (!isSelectingEnemy || !inCombat || enemyInfoList.isEmpty()) return;
-        if (selectedEnemyIndex < 0 || selectedEnemyIndex >= enemyInfoList.size()) return;
+        if (!isSelectingEnemy || !inCombat) return;
         
-        EnemyInfo selectedEnemy = enemyInfoList.get(selectedEnemyIndex);
-        BlockPos enemyPos = selectedEnemy.enemyPosition();
+        // TEST: hardcoded position at (0, 50, 0) looking down
+        Vec3 testCameraPos = new Vec3(30, 50, 30);
         
-        Vec3 cameraPos = new Vec3(
-            enemyPos.getX() + 0.5 + CAMERA_OFFSET_X,
-            enemyPos.getY() + CAMERA_OFFSET_Y,
-            enemyPos.getZ() + 0.5 + CAMERA_OFFSET_Z
-        );
-        
-        Vec3 targetPos = new Vec3(
-            enemyPos.getX() + 0.5,
-            enemyPos.getY() + 1.0,
-            enemyPos.getZ() + 0.5
-        );
-        
-        Vec3 direction = targetPos.subtract(cameraPos).normalize();
-        double horizontalDistance = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
-        float yRot = (float) (Math.atan2(-direction.x, direction.z) * (180.0 / Math.PI));
-        float xRot = (float) (Math.atan2(-direction.y, horizontalDistance) * (180.0 / Math.PI));
-        
-        event.setYaw(yRot);
-        event.setPitch(xRot);
+        event.setYaw(0);
+        event.setPitch(90); // look straight down
         
         Camera camera = event.getCamera();
-        camera.setPosition(cameraPos);
+        camera.setPosition(testCameraPos);
     }
     
     public static void selectEnemy(int index) {
