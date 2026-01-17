@@ -45,14 +45,27 @@ public class CombatInstanceClient {
     public static boolean inCombat = false;
     public static boolean isPlayerTurn = false;
     
+    // Selection states - two step process: ability first, then enemy
+    public static boolean isSelectingAbility = false;
+    public static boolean isSelectingEnemy = false;
+    
     // Enemy selection state
     public static List<EnemyInfo> enemyInfoList = new ArrayList<>();
     public static int selectedEnemyIndex = 0;
-    public static boolean isSelectingEnemy = false;
     
-    private static final double CAMERA_OFFSET_X = 0.0;   // Same X as enemy (centered)
-    private static final double CAMERA_OFFSET_Y = 1.5;   // Eye level
-    private static final double CAMERA_OFFSET_Z = -4.0;  // Between enemy and player (player is at z=-7, enemy at z=0)
+    // Ability selection state
+    private static int selectedAbilityIndex = 0;
+    private static final String[] ABILITIES = {"Attack", "Skill", "Item"};  // U, I, O
+    
+    // Camera settings for ABILITY selection (behind player, offset right)
+    private static final double ABILITY_CAMERA_DISTANCE = 0.01;  // Distance behind player
+    private static final double ABILITY_CAMERA_HEIGHT = 1.6;     // Near eye level
+    private static final double ABILITY_CAMERA_RIGHT_OFFSET = 2.5;  // Player appears on left of screen
+    
+    // Camera settings for ENEMY selection (looking at enemy)
+    private static final double ENEMY_CAMERA_OFFSET_X = 0.0;   // Same X as enemy (centered)
+    private static final double ENEMY_CAMERA_OFFSET_Y = 1.5;   // Eye level
+    private static final double ENEMY_CAMERA_OFFSET_Z = -2.0;  // Distance in front of enemy
 
 
     // Each client only handles their own player, so static is safe here
@@ -110,47 +123,84 @@ public class CombatInstanceClient {
 
     @SubscribeEvent
     public static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
-        if (!isSelectingEnemy || !inCombat || enemyInfoList.isEmpty()) return;
+        if (!inCombat) return;
+        if (!isSelectingAbility && !isSelectingEnemy) return;
         
-        EnemyInfo selectedEnemy = enemyInfoList.get(selectedEnemyIndex);
-        BlockPos enemyPos = selectedEnemy.enemyPosition();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
         
-        Vec3 cameraPos = new Vec3(
-            enemyPos.getX() + 0.5 + CAMERA_OFFSET_X,
-            enemyPos.getY() + CAMERA_OFFSET_Y,
-            enemyPos.getZ() + 0.5 + CAMERA_OFFSET_Z
-        );
-        
-        Vec3 targetPos = new Vec3(
-            enemyPos.getX() + 0.5,
-            enemyPos.getY() + 1.0,
-            enemyPos.getZ() + 0.5
-        );
-        
-        Vec3 direction = targetPos.subtract(cameraPos).normalize();
-        double horizontalDistance = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
-        float yRot = (float) (Math.atan2(-direction.x, direction.z) * (180.0 / Math.PI));
-        float xRot = (float) (Math.atan2(-direction.y, horizontalDistance) * (180.0 / Math.PI));
-        
-        event.setYaw(yRot);
-        event.setPitch(xRot);
+        if (isSelectingAbility) {
+            // Ability selection: camera behind player
+            float playerYaw = mc.player.getYRot();
+            float pitch = 5.0f;
+            event.setYaw(playerYaw);
+            event.setPitch(pitch);
+        } else if (isSelectingEnemy && !enemyInfoList.isEmpty()) {
+            // Enemy selection: camera looking at enemy
+            EnemyInfo selectedEnemy = enemyInfoList.get(selectedEnemyIndex);
+            BlockPos enemyPos = selectedEnemy.enemyPosition();
+            
+            Vec3 cameraPos = new Vec3(
+                enemyPos.getX() + 0.5 + ENEMY_CAMERA_OFFSET_X,
+                enemyPos.getY() + ENEMY_CAMERA_OFFSET_Y,
+                enemyPos.getZ() + 0.5 + ENEMY_CAMERA_OFFSET_Z
+            );
+            
+            Vec3 targetPos = new Vec3(
+                enemyPos.getX() + 0.5,
+                enemyPos.getY() + 1.0,
+                enemyPos.getZ() + 0.5
+            );
+            
+            Vec3 direction = targetPos.subtract(cameraPos).normalize();
+            double horizontalDistance = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
+            float yRot = (float) (Math.atan2(-direction.x, direction.z) * (180.0 / Math.PI));
+            float xRot = (float) (Math.atan2(-direction.y, horizontalDistance) * (180.0 / Math.PI));
+            
+            event.setYaw(yRot);
+            event.setPitch(xRot);
+        }
     }
 
     @SubscribeEvent
     public static void onCalculateCameraDistanceSelection(CalculateDetachedCameraDistanceEvent event) {
-        if (!isSelectingEnemy || !inCombat || enemyInfoList.isEmpty()) return;
+        if (!inCombat) return;
+        if (!isSelectingAbility && !isSelectingEnemy) return;
 
-        EnemyInfo selectedEnemy = enemyInfoList.get(selectedEnemyIndex);
-        BlockPos enemyPos = selectedEnemy.enemyPosition();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
         
-        Vec3 cameraPos = new Vec3(
-            enemyPos.getX() + 0.5 + CAMERA_OFFSET_X,
-            enemyPos.getY() + CAMERA_OFFSET_Y,
-            enemyPos.getZ() + 0.5 + CAMERA_OFFSET_Z
-        );
-
         Camera camera = event.getCamera();
-        camera.setPosition(cameraPos);
+        
+        if (isSelectingAbility) {
+            // Ability selection: camera behind player, offset to right
+            Vec3 playerPos = mc.player.position();
+            float yawRad = (float) Math.toRadians(mc.player.getYRot());
+            
+            double behindX = Math.sin(yawRad) * ABILITY_CAMERA_DISTANCE;
+            double behindZ = -Math.cos(yawRad) * ABILITY_CAMERA_DISTANCE;
+            
+            double rightX = -Math.cos(yawRad) * ABILITY_CAMERA_RIGHT_OFFSET;
+            double rightZ = -Math.sin(yawRad) * ABILITY_CAMERA_RIGHT_OFFSET;
+            
+            Vec3 cameraPos = new Vec3(
+                playerPos.x + behindX + rightX,
+                playerPos.y + ABILITY_CAMERA_HEIGHT,
+                playerPos.z + behindZ + rightZ
+            );
+            camera.setPosition(cameraPos);
+        } else if (isSelectingEnemy && !enemyInfoList.isEmpty()) {
+            // Enemy selection: camera in front of enemy
+            EnemyInfo selectedEnemy = enemyInfoList.get(selectedEnemyIndex);
+            BlockPos enemyPos = selectedEnemy.enemyPosition();
+            
+            Vec3 cameraPos = new Vec3(
+                enemyPos.getX() + 0.5 + ENEMY_CAMERA_OFFSET_X,
+                enemyPos.getY() + ENEMY_CAMERA_OFFSET_Y,
+                enemyPos.getZ() + 0.5 + ENEMY_CAMERA_OFFSET_Z
+            );
+            camera.setPosition(cameraPos);
+        }
     }
 
     public static void selectEnemy(int index) {
@@ -274,11 +324,29 @@ public class CombatInstanceClient {
         
         int key = event.getKey();
         
+        // Step 1: Ability selection with U, I, O keys
+        if (isSelectingAbility) {
+            if (key == GLFW.GLFW_KEY_U) {
+                selectedAbilityIndex = 0;  // Top - Attack
+                confirmAbilitySelection();
+                return;
+            } else if (key == GLFW.GLFW_KEY_I) {
+                selectedAbilityIndex = 1;  // Middle - Skill
+                confirmAbilitySelection();
+                return;
+            } else if (key == GLFW.GLFW_KEY_O) {
+                selectedAbilityIndex = 2;  // Bottom - Item
+                confirmAbilitySelection();
+                return;
+            }
+        }
+        
+        // Step 2: Enemy selection with M, N keys
         if (isSelectingEnemy) {
-            if (key == GLFW.GLFW_KEY_N) {
+            if (key == GLFW.GLFW_KEY_M) {
                 selectPreviousEnemy();
                 return;
-            } else if (key == GLFW.GLFW_KEY_M) {
+            } else if (key == GLFW.GLFW_KEY_N) {
                 selectNextEnemy();
                 return;
             }
@@ -403,13 +471,22 @@ public class CombatInstanceClient {
         qteStartTime = 0;
     }
 
+    private static void confirmAbilitySelection() {
+        // Move from ability selection to enemy selection
+        isSelectingAbility = false;
+        isSelectingEnemy = true;
+        selectedEnemyIndex = 0;
+    }
+    
     public static void endCombat() {
         Minecraft mc = Minecraft.getInstance();
         inCombat = false;
         isPlayerTurn = false;
+        isSelectingAbility = false;
         isSelectingEnemy = false;
         enemyInfoList.clear();
         selectedEnemyIndex = 0;
+        selectedAbilityIndex = 0;
         mc.options.setCameraType(CameraType.FIRST_PERSON);
         
         // Clear QTE state when combat ends
@@ -450,19 +527,50 @@ public class CombatInstanceClient {
         int screenWidth = event.getGuiGraphics().guiWidth();
         int screenHeight = event.getGuiGraphics().guiHeight();
         
-        // Load UI design from config
+        // Show turn indicator button when no selection mode is active
+        if (!isSelectingAbility && !isSelectingEnemy) {
+            CombatUIConfig.TurnIndicatorConfig config = CombatUIConfig.getTurnIndicator();
+            
+            int x = (screenWidth - config.width) / 2;
+            int y = (screenHeight - config.height) / 2;
+
+            guiGraphics.blit(config.image, x, y, 0, 0, config.width, config.height, config.width, config.height);
+        }
+        
+        // Step 1: Ability selection UI
+        if (isSelectingAbility) {
+            renderAbilitySelectionUI(guiGraphics, mc, screenWidth, screenHeight);
+        }
+        
+        // Step 2: Enemy selection UI
+        if (isSelectingEnemy && !enemyInfoList.isEmpty()) {
+            String selectionText = "Select Enemy: " + (selectedEnemyIndex + 1) + "/" + enemyInfoList.size() + " [M] <- -> [N] | Right-click to confirm";
+            int textWidth = mc.font.width(selectionText);
+            guiGraphics.drawString(mc.font, selectionText, (screenWidth - textWidth) / 2, screenHeight - 40, 0xFFFFFFFF);
+        }
+    }
+    
+    private static void renderAbilitySelectionUI(GuiGraphics guiGraphics, Minecraft mc, int screenWidth, int screenHeight) {
         CombatUIConfig.TurnIndicatorConfig config = CombatUIConfig.getTurnIndicator();
         
-        int x = (screenWidth - config.width) / 2;
-        int y = (screenHeight - config.height) / 2;
-
-        guiGraphics.blit(config.image, x, y, 0, 0, config.width, config.height, config.width, config.height);
+        // Smaller horizontal bars on the right side
+        int barWidth = 120;
+        int barHeight = 20;
+        int barX = screenWidth/2 + 20;
+        int startY = (screenHeight - (barHeight * 3 + 20)) / 2;
+        int buttonSpacing = barHeight + 10;
         
-        // Show enemy selection indicator if in selection mode
-        if (isSelectingEnemy && !enemyInfoList.isEmpty()) {
-            String selectionText = "Select Enemy: " + (selectedEnemyIndex + 1) + "/" + enemyInfoList.size() + " [J] <- -> [L]";
-            int textWidth = mc.font.width(selectionText);
-            guiGraphics.drawString(mc.font, selectionText, (screenWidth - textWidth) / 2, screenHeight - 40, 0xFFFFFF);
+        String[] keyLabels = {"[U]", "[I]", "[O]"};
+        
+        for (int i = 0; i < ABILITIES.length; i++) {
+            int barY = startY + i * buttonSpacing;
+            
+            guiGraphics.blit(config.image, barX, barY, barWidth, barHeight, 0, 0, config.width, config.height, config.width, config.height);
+            
+            String label = keyLabels[i] + " " + ABILITIES[i];
+            int labelX = barX + 8;
+            int labelY = barY + (barHeight - 8) / 2;
+            guiGraphics.drawString(mc.font, label, labelX, labelY, 0xFFFFFFFF);
         }
     }
 
@@ -472,15 +580,19 @@ public class CombatInstanceClient {
         
         if (event.isUseItem()) {
             Minecraft mc = Minecraft.getInstance();
-            if (!isSelectingEnemy) {
-                isSelectingEnemy = true;
-                selectedEnemyIndex = 0;
-                
-                if (mc.player != null && !enemyInfoList.isEmpty()) {
-                    mc.player.sendSystemMessage(Component.literal("Selecting enemy... Use [J]/[L] to switch, Right-click to confirm"));
-                }
-            } else {
+            
+            // Step 0: Start ability selection
+            if (!isSelectingAbility && !isSelectingEnemy) {
+                isSelectingAbility = true;
+                selectedAbilityIndex = 0;
+                event.setCanceled(true);
+                return;
+            }
+            
+            // Step 2: Confirm enemy selection and end turn
+            if (isSelectingEnemy) {
                 isPlayerTurn = false;
+                isSelectingAbility = false;
                 isSelectingEnemy = false;
                 PacketDistributor.sendToServer(new EndPlayerTurnPacket());
             }
