@@ -50,9 +50,9 @@ public class CombatInstanceClient {
     public static int selectedEnemyIndex = 0;
     public static boolean isSelectingEnemy = false;
     
-    private static final double CAMERA_OFFSET_X = -3.0;
-    private static final double CAMERA_OFFSET_Y = 1.5;
-    private static final double CAMERA_OFFSET_Z = 0.0;
+    private static final double CAMERA_OFFSET_X = 0.0;   // Same X as enemy (centered)
+    private static final double CAMERA_OFFSET_Y = 1.5;   // Eye level
+    private static final double CAMERA_OFFSET_Z = -4.0;  // Between enemy and player (player is at z=-7, enemy at z=0)
 
 
     // Each client only handles their own player, so static is safe here
@@ -107,49 +107,80 @@ public class CombatInstanceClient {
             }
         }
     }
-    
 
+    @SubscribeEvent
     public static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
-        if (!isSelectingEnemy || !inCombat) return;
+        if (!isSelectingEnemy || !inCombat || enemyInfoList.isEmpty()) return;
         
-        // TEST: hardcoded position at (0, 50, 0) looking down
-        Vec3 testCameraPos = new Vec3(30, 50, 30);
+        EnemyInfo selectedEnemy = enemyInfoList.get(selectedEnemyIndex);
+        BlockPos enemyPos = selectedEnemy.enemyPosition();
         
-        event.setYaw(0);
-        event.setPitch(90); // look straight down
+        Vec3 cameraPos = new Vec3(
+            enemyPos.getX() + 0.5 + CAMERA_OFFSET_X,
+            enemyPos.getY() + CAMERA_OFFSET_Y,
+            enemyPos.getZ() + 0.5 + CAMERA_OFFSET_Z
+        );
         
-        Camera camera = event.getCamera();
-        camera.setPosition(testCameraPos);
+        Vec3 targetPos = new Vec3(
+            enemyPos.getX() + 0.5,
+            enemyPos.getY() + 1.0,
+            enemyPos.getZ() + 0.5
+        );
+        
+        Vec3 direction = targetPos.subtract(cameraPos).normalize();
+        double horizontalDistance = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
+        float yRot = (float) (Math.atan2(-direction.x, direction.z) * (180.0 / Math.PI));
+        float xRot = (float) (Math.atan2(-direction.y, horizontalDistance) * (180.0 / Math.PI));
+        
+        event.setYaw(yRot);
+        event.setPitch(xRot);
     }
-    
+
+    @SubscribeEvent
+    public static void onCalculateCameraDistanceSelection(CalculateDetachedCameraDistanceEvent event) {
+        if (!isSelectingEnemy || !inCombat || enemyInfoList.isEmpty()) return;
+
+        EnemyInfo selectedEnemy = enemyInfoList.get(selectedEnemyIndex);
+        BlockPos enemyPos = selectedEnemy.enemyPosition();
+        
+        Vec3 cameraPos = new Vec3(
+            enemyPos.getX() + 0.5 + CAMERA_OFFSET_X,
+            enemyPos.getY() + CAMERA_OFFSET_Y,
+            enemyPos.getZ() + 0.5 + CAMERA_OFFSET_Z
+        );
+
+        Camera camera = event.getCamera();
+        camera.setPosition(cameraPos);
+    }
+
     public static void selectEnemy(int index) {
         if (enemyInfoList.isEmpty()) return;
-        
+
         selectedEnemyIndex = Math.max(0, Math.min(index, enemyInfoList.size() - 1));
-        
+
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
             mc.player.sendSystemMessage(Component.literal("Selected enemy " + (selectedEnemyIndex + 1) + "/" + enemyInfoList.size()));
         }
     }
-    
+
     public static void selectPreviousEnemy() {
         if (enemyInfoList.isEmpty() || selectedEnemyIndex <= 0) return;
         selectEnemy(selectedEnemyIndex - 1);
     }
-    
+
     public static void selectNextEnemy() {
         if (enemyInfoList.isEmpty() || selectedEnemyIndex >= enemyInfoList.size() - 1) return;
         selectEnemy(selectedEnemyIndex + 1);
     }
-    
+
     public static EnemyInfo getSelectedEnemy() {
         if (enemyInfoList.isEmpty() || selectedEnemyIndex < 0 || selectedEnemyIndex >= enemyInfoList.size()) {
             return null;
         }
         return enemyInfoList.get(selectedEnemyIndex);
     }
-    
+
     @SubscribeEvent
     public static void onMovementInput(MovementInputUpdateEvent event) {
         if (!inCombat) return;
@@ -170,12 +201,7 @@ public class CombatInstanceClient {
         }
     }
 
-    @SubscribeEvent
-    public static void onCalculateCameraDistance(CalculateDetachedCameraDistanceEvent event) {
-        if (!inCombat) event.setDistance(4.0F);
-        // Set camera distance farther (default is usually around 4.0)
-        else event.setDistance(4.0F);
-    }
+
 
 
     public static void startCombatNetworkHandler(final StartCombatPacket pkt, final IPayloadContext context) {
