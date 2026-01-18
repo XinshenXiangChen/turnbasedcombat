@@ -578,8 +578,7 @@ public class CombatInstanceClient {
     public static void onMouseClick(InputEvent.InteractionKeyMappingTriggered event) {
         if (!inCombat || !isPlayerTurn) return;
         
-        if (event.isUseItem()) {
-            Minecraft mc = Minecraft.getInstance();
+        if (event.isAttack()) {
             
             // Step 0: Start ability selection
             if (!isSelectingAbility && !isSelectingEnemy) {
@@ -594,7 +593,8 @@ public class CombatInstanceClient {
                 isPlayerTurn = false;
                 isSelectingAbility = false;
                 isSelectingEnemy = false;
-                PacketDistributor.sendToServer(new EndPlayerTurnPacket());
+                // Send the selected ability and enemy to the server
+                PacketDistributor.sendToServer(new EndPlayerTurnPacket(selectedAbilityIndex, selectedEnemyIndex));
             }
             event.setCanceled(true);
         }

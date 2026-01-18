@@ -135,6 +135,8 @@ public class CombatInstanceServer {
     public static void onServerTick(ServerTickEvent.Post event) {
         // Run turnBasedCombat() every tick for all active combat instances
         activeCombatInstances.values().forEach(CombatInstanceServer::turnBasedCombat);
+        // Process attack animations
+        activeCombatInstances.values().forEach(CombatInstanceServer::processAttackAnimation);
         // Process pending damage timeouts
         activeCombatInstances.values().forEach(CombatInstanceServer::processPendingDamageTimeout);
         // Remove instances where combat has ended (player is no longer in combat dimension)
@@ -677,13 +679,163 @@ public class CombatInstanceServer {
 
             CombatInstanceServer instance = getCombatInstance(player.getUUID());
             if (instance != null) {
+                int abilityIndex = pkt.abilityIndex();
+                int enemyIndex = pkt.enemyIndex();
+                
+                // Execute the player's action based on ability
+                instance.executePlayerAction(abilityIndex, enemyIndex);
+                
                 // Finish player's turn
                 instance.entityTurnFinished = true;
                 instance.hasSentPlayerTurnPacket = false;
                 instance.battleQueue.offer(player.getUUID());
-                LOGGER.info("Player {} finished their turn", player.getName().getString());
+                LOGGER.info("Player {} finished their turn with ability {} on enemy {}", 
+                    player.getName().getString(), abilityIndex, enemyIndex);
             }
         });
+    }
+    
+    /**
+     * Execute the player's action based on selected ability and target enemy.
+     * @param abilityIndex 0=Attack, 1=Skill, 2=Item
+     * @param enemyIndex index of the target enemy
+     */
+    private void executePlayerAction(int abilityIndex, int enemyIndex) {
+        // Get the target enemy
+        Entity targetEnemy = getEnemyByIndex(enemyIndex);
+        if (targetEnemy == null) {
+            LOGGER.warn("Target enemy at index {} not found", enemyIndex);
+            return;
+        }
+        
+        switch (abilityIndex) {
+            case EndPlayerTurnPacket.ABILITY_ATTACK -> {
+                // Basic attack - deal damage to the enemy
+                performPlayerAttack(targetEnemy);
+            }
+            case EndPlayerTurnPacket.ABILITY_SKILL -> {
+                // Skill - placeholder for special abilities
+                performPlayerSkill(targetEnemy);
+            }
+            case EndPlayerTurnPacket.ABILITY_ITEM -> {
+                // Item - placeholder for item usage
+                performPlayerItem(targetEnemy);
+            }
+            default -> LOGGER.warn("Unknown ability index: {}", abilityIndex);
+        }
+    }
+    
+    /**
+     * Get an enemy entity by its index in the alive enemies list.
+     */
+    private Entity getEnemyByIndex(int index) {
+        List<Entity> aliveEnemies = new ArrayList<>();
+        for (UUID enemyUUID : enemyUUIDs) {
+            Entity enemy = combatServerLevel.getEntity(enemyUUID);
+            if (enemy != null && enemy.isAlive()) {
+                aliveEnemies.add(enemy);
+            }
+        }
+        
+        if (index >= 0 && index < aliveEnemies.size()) {
+            return aliveEnemies.get(index);
+        }
+        return null;
+    }
+    
+    // Attack animation state
+    private boolean isPerformingAttackAnimation = false;
+    private int attackAnimationTicks = 0;
+    private static final int ATTACK_DASH_TICKS = 5;      // Time to stay at enemy before attacking
+    private static final int ATTACK_RETURN_TICKS = 10;   // Time before teleporting back
+    private double combatPosX, combatPosY, combatPosZ;   // Player's position in combat before attack
+    private float combatYaw, combatPitch;
+    private Entity attackTarget = null;
+    
+    /**
+     * Perform a basic attack on the target enemy.
+     * Teleports player to enemy, attacks, then teleports back.
+     */
+    private void performPlayerAttack(Entity target) {
+        if (player == null || target == null) return;
+        
+        // Store player's combat position (where to return after attack)
+        combatPosX = player.getX();
+        combatPosY = player.getY();
+        combatPosZ = player.getZ();
+        combatYaw = player.getYRot();
+        combatPitch = player.getXRot();
+        attackTarget = target;
+        
+        // Calculate position in front of enemy (1.5 blocks away, facing the enemy)
+        double dx = target.getX() - player.getX();
+        double dz = target.getZ() - player.getZ();
+        double distance = Math.sqrt(dx * dx + dz * dz);
+        
+        double attackDistance = 1.5;
+        double attackX = target.getX() - (dx / distance) * attackDistance;
+        double attackZ = target.getZ() - (dz / distance) * attackDistance;
+        double attackY = target.getY();
+        
+        // Calculate yaw to face the enemy
+        float yaw = (float) (Math.atan2(-dx, dz) * (180.0 / Math.PI));
+        
+        // Teleport player to attack position
+        player.teleportTo(attackX, attackY, attackZ);
+        
+        // Start attack animation sequence
+        isPerformingAttackAnimation = true;
+        attackAnimationTicks = 0;
+        
+        LOGGER.info("Player dashing to attack {}", target.getName().getString());
+    }
+    
+    /**
+     * Process the attack animation sequence (called from tick).
+     */
+    private void processAttackAnimation() {
+        if (!isPerformingAttackAnimation || attackTarget == null) return;
+        
+        attackAnimationTicks++;
+        
+        // At ATTACK_DASH_TICKS, deal damage
+        if (attackAnimationTicks == ATTACK_DASH_TICKS) {
+            float damage = (float) player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
+            attackTarget.hurt(player.damageSources().playerAttack(player), damage);
+            player.swing(net.minecraft.world.InteractionHand.MAIN_HAND, true);
+            LOGGER.info("Player attacked {} for {} damage", attackTarget.getName().getString(), damage);
+        }
+        
+        // At ATTACK_RETURN_TICKS, teleport back
+        if (attackAnimationTicks >= ATTACK_RETURN_TICKS) {
+            player.teleportTo(combatPosX, combatPosY, combatPosZ);
+            
+            isPerformingAttackAnimation = false;
+            attackAnimationTicks = 0;
+            attackTarget = null;
+            LOGGER.info("Player returned to original position");
+        }
+    }
+    
+    /**
+     * Perform a skill on the target enemy.
+     */
+    private void performPlayerSkill(Entity target) {
+        // Placeholder - skills can be implemented here
+        // For now, deal 1.5x attack damage
+        float damage = (float) (player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE) * 1.5);
+        target.hurt(player.damageSources().playerAttack(player), damage);
+        LOGGER.info("Player used skill on {} for {} damage", target.getName().getString(), damage);
+    }
+    
+    /**
+     * Use an item on the target (or self).
+     */
+    private void performPlayerItem(Entity target) {
+        // Placeholder - item usage can be implemented here
+        // For now, heal the player slightly
+        player.heal(4.0f);
+        LOGGER.info("Player used item, healed for 4 HP");
     }
     
     /**
