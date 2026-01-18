@@ -58,9 +58,9 @@ public class CombatInstanceClient {
     private static final String[] ABILITIES = {"Attack", "Skill", "Item"};  // U, I, O
     
     // Camera settings for ABILITY selection (behind player, offset right)
-    private static final double ABILITY_CAMERA_DISTANCE = 0.01;  // Distance behind player
-    private static final double ABILITY_CAMERA_HEIGHT = 1.6;     // Near eye level
-    private static final double ABILITY_CAMERA_RIGHT_OFFSET = 2.5;  // Player appears on left of screen
+    private static final double ABILITY_CAMERA_DISTANCE = -2.5;  // Distance behind player
+    private static final double ABILITY_CAMERA_HEIGHT = 1;     // Near eye level
+    private static final double ABILITY_CAMERA_RIGHT_OFFSET = 1.5;  // Player appears on left of screen
     
     // Camera settings for ENEMY selection (looking at enemy)
     private static final double ENEMY_CAMERA_OFFSET_X = 0.0;   // Same X as enemy (centered)
