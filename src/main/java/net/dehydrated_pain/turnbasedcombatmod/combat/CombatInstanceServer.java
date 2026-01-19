@@ -802,7 +802,10 @@ public class CombatInstanceServer {
         if (attackAnimationTicks == ATTACK_DASH_TICKS) {
             float damage = (float) player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
             attackTarget.hurt(player.damageSources().playerAttack(player), damage);
-            player.swing(net.minecraft.world.InteractionHand.MAIN_HAND, true);
+            
+            // Send packet to client to trigger Epic Fight attack animation
+            PacketDistributor.sendToPlayer(player, new net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket());
+            
             LOGGER.info("Player attacked {} for {} damage", attackTarget.getName().getString(), damage);
         }
         
@@ -821,8 +824,7 @@ public class CombatInstanceServer {
      * Perform a skill on the target enemy.
      */
     private void performPlayerSkill(Entity target) {
-        // Placeholder - skills can be implemented here
-        // For now, deal 1.5x attack damage
+
         float damage = (float) (player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE) * 1.5);
         target.hurt(player.damageSources().playerAttack(player), damage);
         LOGGER.info("Player used skill on {} for {} damage", target.getName().getString(), damage);
@@ -832,12 +834,10 @@ public class CombatInstanceServer {
      * Use an item on the target (or self).
      */
     private void performPlayerItem(Entity target) {
-        // Placeholder - item usage can be implemented here
-        // For now, heal the player slightly
+
         player.heal(4.0f);
         LOGGER.info("Player used item, healed for 4 HP");
     }
-    
     /**
      * Store pending damage information for parry mechanic
      */

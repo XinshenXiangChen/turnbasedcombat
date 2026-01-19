@@ -1,4 +1,9 @@
+# Turn based combat mod
+This is a turn based combat mod inspired by Expedition 33's system, with 
+mechanics adapted to minecraft.
 
+
+# Neoforge README
 Installation information
 =======
 
@@ -23,3 +28,8 @@ Additional Resources:
 ==========
 Community Documentation: https://docs.neoforged.net/  
 NeoForged Discord: https://discord.neoforged.net/
+
+
+
+#### Mod developed by Dehydrated Pain
+

@@ -6,6 +6,7 @@ import net.dehydrated_pain.turnbasedcombatmod.network.PlayerTurnPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket;
 import net.dehydrated_pain.turnbasedcombatmod.utils.playerturn.EnemyInfo;
 import net.dehydrated_pain.turnbasedcombatmod.ui.CombatUIConfig;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
@@ -17,6 +18,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
@@ -33,10 +35,17 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.lwjgl.glfw.GLFW;
+import yesman.epicfight.gameasset.Animations;
+import yesman.epicfight.world.capabilities.EpicFightCapabilities;
+import yesman.epicfight.world.capabilities.entitypatch.player.PlayerPatch;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
+import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.LOGGER;
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 
 
@@ -301,6 +310,23 @@ public class CombatInstanceClient {
                     context.disconnect(Component.literal("Failed to handle player turn: " + e.getMessage()));
                     return null;
                 });
+    }
+
+    public static void triggerEpicFightAttack(Player player) {
+        PlayerPatch patch = EpicFightCapabilities.getEntityPatch(player, PlayerPatch.class);
+        if (patch != null) {
+            patch.playAnimationInstantly(Animations.TRIDENT_AUTO1);
+        }
+    }
+
+    public static void triggerEpicFightAttackNetworkHandler(final TriggerEpicFightAttackPacket pkt, final IPayloadContext context) {
+        // Main thread work
+        context.enqueueWork(() -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player != null) {
+                triggerEpicFightAttack(mc.player);
+            }
+        });
     }
 
     public static void qteRequesteNetworkHandler(final QTERequestPacket pkt, final IPayloadContext context) {

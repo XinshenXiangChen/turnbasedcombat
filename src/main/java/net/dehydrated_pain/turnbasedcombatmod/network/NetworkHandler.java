@@ -41,6 +41,12 @@ public class NetworkHandler {
                 CombatInstanceClient::qteRequesteNetworkHandler
         );
 
+        registrar.playToClient(
+                net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket.TYPE,
+                net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket.STREAM_CODEC,
+                CombatInstanceClient::triggerEpicFightAttackNetworkHandler
+        );
+
         // client to server
         registrar.playToServer(
                 QTEResponsePacket.TYPE,
