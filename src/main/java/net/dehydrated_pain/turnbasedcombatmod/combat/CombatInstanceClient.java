@@ -58,14 +58,21 @@ public class CombatInstanceClient {
     private static final String[] ABILITIES = {"Attack", "Skill", "Item"};  // U, I, O
     
     // Camera settings for ABILITY selection (behind player, offset right)
-    private static final double ABILITY_CAMERA_DISTANCE = -2.5;  // Distance behind player
-    private static final double ABILITY_CAMERA_HEIGHT = 1;     // Near eye level
+    private static final double ABILITY_CAMERA_DISTANCE = -2.7;  // Distance behind player
+    private static final double ABILITY_CAMERA_HEIGHT = 1.4;     // slightly below eye level
     private static final double ABILITY_CAMERA_RIGHT_OFFSET = 1.5;  // Player appears on left of screen
     
     // Camera settings for ENEMY selection (looking at enemy)
     private static final double ENEMY_CAMERA_OFFSET_X = 0.0;   // Same X as enemy (centered)
     private static final double ENEMY_CAMERA_OFFSET_Y = 1.5;   // Eye level
     private static final double ENEMY_CAMERA_OFFSET_Z = -2.0;  // Distance in front of enemy
+    
+    // Ability selection UI layout settings
+    private static final int ABILITY_BAR_WIDTH = 90;
+    private static final int ABILITY_BAR_HEIGHT = 15;
+    private static final int ABILITY_BAR_X_OFFSET = -10;  // Offset from center of screen
+    private static final int ABILITY_BUTTON_SPACING = 25; // barHeight + 10
+    private static final String[] KEY_LABELS = {"[U]", "[I]", "[O]"};
 
 
     // Each client only handles their own player, so static is safe here
@@ -553,23 +560,18 @@ public class CombatInstanceClient {
     private static void renderAbilitySelectionUI(GuiGraphics guiGraphics, Minecraft mc, int screenWidth, int screenHeight) {
         CombatUIConfig.TurnIndicatorConfig config = CombatUIConfig.getTurnIndicator();
         
-        // Smaller horizontal bars on the right side
-        int barWidth = 120;
-        int barHeight = 20;
-        int barX = screenWidth/2 + 20;
-        int startY = (screenHeight - (barHeight * 3 + 20)) / 2;
-        int buttonSpacing = barHeight + 10;
-        
-        String[] keyLabels = {"[U]", "[I]", "[O]"};
+        // Calculate positions using class attributes
+        int barX = screenWidth / 2 + ABILITY_BAR_X_OFFSET;
+        int startY = (screenHeight - (ABILITY_BAR_HEIGHT * 3 + 20)) / 2;
         
         for (int i = 0; i < ABILITIES.length; i++) {
-            int barY = startY + i * buttonSpacing;
+            int barY = startY + i * ABILITY_BUTTON_SPACING;
             
-            guiGraphics.blit(config.image, barX, barY, barWidth, barHeight, 0, 0, config.width, config.height, config.width, config.height);
+            guiGraphics.blit(config.image, barX, barY, ABILITY_BAR_WIDTH, ABILITY_BAR_HEIGHT, 0, 0, config.width, config.height, config.width, config.height);
             
-            String label = keyLabels[i] + " " + ABILITIES[i];
+            String label = KEY_LABELS[i] + " " + ABILITIES[i];
             int labelX = barX + 8;
-            int labelY = barY + (barHeight - 8) / 2;
+            int labelY = barY + (ABILITY_BAR_HEIGHT - 8) / 2;
             guiGraphics.drawString(mc.font, label, labelX, labelY, 0xFFFFFFFF);
         }
     }
