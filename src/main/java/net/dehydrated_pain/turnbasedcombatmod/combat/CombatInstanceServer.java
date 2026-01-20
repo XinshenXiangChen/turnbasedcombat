@@ -49,7 +49,7 @@ public class CombatInstanceServer {
     private static final Map<UUID, CombatInstanceServer> activeCombatInstances = new ConcurrentHashMap<>();
 
     public ServerPlayer player;
-    List<Entity> enemies;
+    List<Mob> enemies;
     List<UUID> enemyUUIDs;
     public ServerLevel combatServerLevel;
     
@@ -89,7 +89,7 @@ public class CombatInstanceServer {
     boolean entityTurnFinished = true;
     boolean hasSentPlayerTurnPacket = false;
 
-    public CombatInstanceServer(ServerPlayer _player, List<Entity> _enemies, Entity firstAttacker, Biome biome) {
+    public CombatInstanceServer(ServerPlayer _player, List<Mob> _enemies, Entity firstAttacker, Biome biome) {
 
         player = _player;
 
@@ -181,7 +181,7 @@ public class CombatInstanceServer {
             } else {
                 // Entity is dead or not found, just return (fail)
                 LOGGER.warn("Entity {} is dead or not found, stopping turn processing", attackerUUID);
-                return;
+
             }
         }
 
@@ -289,13 +289,14 @@ public class CombatInstanceServer {
         StructurePlacer sp = new StructurePlacer(biome, combatServerLevel);
         sp.place();
         // Store original positions, levels, and rotations for all enemies
-        for (Entity enemy: enemies) {
-            UUID enemyUUID = enemy.getUUID();
-            enemyOriginalLevels.put(enemyUUID, (ServerLevel) enemy.level());
-            enemyOriginalPositions.put(enemyUUID, new BlockPos((int) enemy.getX(),(int) enemy.getY(), (int) enemy.getZ()));
-            enemyOriginalRot.put(enemyUUID, new Vec2(enemy.getYRot(), enemy.getXRot()));
-            
+        for (Mob enemy: enemies) {
             if (enemy instanceof Mob mob) {
+                UUID enemyUUID = enemy.getUUID();
+                enemyOriginalLevels.put(enemyUUID, (ServerLevel) enemy.level());
+                enemyOriginalPositions.put(enemyUUID, new BlockPos((int) enemy.getX(),(int) enemy.getY(), (int) enemy.getZ()));
+                enemyOriginalRot.put(enemyUUID, new Vec2(enemy.getYRot(), enemy.getXRot()));
+
+
                 mob.setNoAi(true);
                 mob.setDeltaMovement(0, 0, 0);
             }
@@ -517,7 +518,7 @@ public class CombatInstanceServer {
         return level.getMinBuildHeight() + 1;
     }
     
-    private void teleport(ServerPlayer player, ServerLevel targetLevel, List<Entity> toTeleport) {
+    private void teleport(ServerPlayer player, ServerLevel targetLevel, List<Mob> toTeleport) {
         // Find the highest block at player spawn position
         int playerX = PLAYER_SPAWN_POS.getX();
         int playerZ = PLAYER_SPAWN_POS.getZ();
@@ -801,7 +802,6 @@ public class CombatInstanceServer {
         // At ATTACK_DASH_TICKS, deal damage
         if (attackAnimationTicks == ATTACK_DASH_TICKS) {
             float damage = (float) player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
-            attackTarget.hurt(player.damageSources().playerAttack(player), damage);
             
             // Send packet to client to trigger Epic Fight attack animation
             PacketDistributor.sendToPlayer(player, new net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket());

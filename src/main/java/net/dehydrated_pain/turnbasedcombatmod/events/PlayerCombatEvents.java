@@ -10,6 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.neoforged.bus.api.EventPriority;
@@ -34,13 +35,12 @@ public class PlayerCombatEvents {
         if (inCombatDimension(player)) return;
 
         // Find all living entities in the swing radius (example: 3 blocks around player)
-        List<Entity> hitEntities = player.level().getEntitiesOfClass(Entity.class,
-                player.getBoundingBox().inflate(2),
-                e -> e != player && e.isAlive());
+        List<Mob> hitEntities = player.level().getEntitiesOfClass(Mob.class,
+                player.getBoundingBox().inflate(2));
 
         if (hitEntities.isEmpty()) return;
 
-        List<Entity> toTeleport = hitEntities.size() > 3 ? hitEntities.subList(0, 3) : hitEntities;
+        List<Mob> toTeleport = hitEntities.size() > 3 ? hitEntities.subList(0, 3) : hitEntities;
 
         BlockPos playerPos = player.blockPosition();
         Biome biome = player.serverLevel().getBiome(playerPos).value();
@@ -76,12 +76,12 @@ public class PlayerCombatEvents {
         event.setCanceled(true);
 
         // Build list with attacker first, then nearby entities
-        List<Entity> toTeleport = new java.util.ArrayList<>();
-        toTeleport.add(attacker);
+        List<Mob> toTeleport = new java.util.ArrayList<>();
 
-        List<Entity> nearbyEntities = player.level().getEntitiesOfClass(Entity.class,
-                player.getBoundingBox().inflate(2),
-                e -> e != player && e != attacker && e.isAlive());
+        toTeleport.add((Mob) attacker);
+
+        List<Mob> nearbyEntities = player.level().getEntitiesOfClass(Mob.class,
+                player.getBoundingBox().inflate(2));
 
         toTeleport.addAll(nearbyEntities);
 
@@ -107,7 +107,7 @@ public class PlayerCombatEvents {
         CombatInstanceServer combatInstance = CombatInstanceServer.getCombatInstance(player.getUUID());
         if (combatInstance == null) return;
         
-        // Skip if we're intentionally applying pending damage (to prevent infinite loop)
+        // Damage from the rehurt event (parry mechanic) never hit if this if doesnt exist
         if (combatInstance.isApplyingPendingDamage()) return;
 
         Entity attacker = event.getSource().getEntity();
