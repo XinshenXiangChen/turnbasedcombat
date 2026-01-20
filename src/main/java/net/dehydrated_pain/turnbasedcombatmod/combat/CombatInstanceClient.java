@@ -7,6 +7,7 @@ import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
 import net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket;
+import net.dehydrated_pain.turnbasedcombatmod.turnbasedcombatanimations.AnimationMappings;
 import net.dehydrated_pain.turnbasedcombatmod.utils.playerturn.EnemyInfo;
 import net.dehydrated_pain.turnbasedcombatmod.ui.CombatUIConfig;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
@@ -19,6 +20,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
@@ -311,11 +313,13 @@ public class CombatInstanceClient {
                     return null;
                 });
     }
-
+    // TODO: create a handler for abilities, where the network handler transfeers also the skill number and if it is a skill
     public static void triggerEpicFightAttack(Player player) {
         PlayerPatch patch = EpicFightCapabilities.getEntityPatch(player, PlayerPatch.class);
+        Item heldItem = player.getMainHandItem().getItem();
+
         if (patch != null) {
-            patch.playAnimationInstantly(Animations.TRIDENT_AUTO1);
+            patch.playAnimationInstantly(AnimationMappings.animationMappings.get(heldItem).animation());
         }
     }
 

@@ -1,5 +1,6 @@
 package net.dehydrated_pain.turnbasedcombatmod;
 
+import net.dehydrated_pain.turnbasedcombatmod.turnbasedcombatanimations.AnimationMappings;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
@@ -40,16 +41,7 @@ public class TurnBasedCombatMod {
 
 
     private void commonSetup(FMLCommonSetupEvent event) {
-        // Some common setup code
-        LOGGER.info("HELLO FROM COMMON SETUP");
-
-        if (Config.LOG_DIRT_BLOCK.getAsBoolean()) {
-            LOGGER.info("DIRT BLOCK >> {}", BuiltInRegistries.BLOCK.getKey(Blocks.DIRT));
-        }
-
-        LOGGER.info("{}{}", Config.MAGIC_NUMBER_INTRODUCTION.get(), Config.MAGIC_NUMBER.getAsInt());
-
-        Config.ITEM_STRINGS.get().forEach((item) -> LOGGER.info("ITEM >> {}", item));
+        event.enqueueWork(AnimationMappings::init);
     }
 
     // Add the example block item to the building blocks tab
