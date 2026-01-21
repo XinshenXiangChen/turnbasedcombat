@@ -13,7 +13,7 @@ import java.util.Map;
 public class AnimationMappings {
     public record WeaponAnimationSet(
             AnimationManager.AnimationAccessor<? extends AttackAnimation> animation,
-            Map<String, ResourceLocation> skills
+            Map<String, AnimationManager.AnimationAccessor<? extends AttackAnimation>> skills
     ) {}
 
 

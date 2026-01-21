@@ -1,11 +1,6 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
-import net.dehydrated_pain.turnbasedcombatmod.network.EndCombatPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.EndPlayerTurnPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.PlayerTurnPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.*;
 import net.dehydrated_pain.turnbasedcombatmod.utils.playerturn.EnemyInfo;
 import net.dehydrated_pain.turnbasedcombatmod.structuregen.StructurePlacer;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
@@ -794,6 +789,7 @@ public class CombatInstanceServer {
     /**
      * Process the attack animation sequence (called from tick).
      */
+    // TODO recieve the param of if isSkill and if isSkill what skill it is, this means that the client also needs to know all trident skills
     private void processAttackAnimation() {
         if (!isPerformingAttackAnimation || attackTarget == null) return;
         
@@ -803,8 +799,8 @@ public class CombatInstanceServer {
         if (attackAnimationTicks == ATTACK_DASH_TICKS) {
             float damage = (float) player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
             
-            // Send packet to client to trigger Epic Fight attack animation
-            PacketDistributor.sendToPlayer(player, new net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket());
+
+            PacketDistributor.sendToPlayer(player, new TriggerEpicFightAttackPacket(false, ""));
             
             LOGGER.info("Player attacked {} for {} damage", attackTarget.getName().getString(), damage);
         }
