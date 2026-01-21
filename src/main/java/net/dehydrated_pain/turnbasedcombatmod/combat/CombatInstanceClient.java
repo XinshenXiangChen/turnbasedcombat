@@ -317,7 +317,7 @@ public class CombatInstanceClient {
     public static void triggerEpicFightAttack(Player player) {
         PlayerPatch patch = EpicFightCapabilities.getEntityPatch(player, PlayerPatch.class);
         Item heldItem = player.getMainHandItem().getItem();
-
+                                                                                                                                                                                                                                
         if (patch != null) {
             patch.playAnimationInstantly(AnimationMappings.animationMappings.get(heldItem).animation());
         }
