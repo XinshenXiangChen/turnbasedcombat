@@ -11,6 +11,8 @@ import net.dehydrated_pain.turnbasedcombatmod.structuregen.StructurePlacer;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.SkillInfo;
 import net.dehydrated_pain.turnbasedcombatmod.turnbasedcombatanimations.AnimationMappings;
+import yesman.epicfight.api.animation.AnimationManager;
+import yesman.epicfight.api.animation.types.AttackAnimation;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -766,11 +768,60 @@ public class CombatInstanceServer {
     private boolean isSkillAnimation = false;
     private String animationSkillName = "";
     private int attackAnimationTicks = 0;
-    private static final int ATTACK_DASH_TICKS = 5;      // Time to stay at enemy before attacking
-    private static final int ATTACK_RETURN_TICKS = 10;   // Time before teleporting back
+    private int calculatedAnimationTicks = 0;  // Calculated from Epic Fight animation duration
+    private static final int ATTACK_DASH_TICKS = 5;      // Time to stay at enemy before attacking (delay before animation starts)
+    private static final int ANIMATION_OFFSET_TICKS = 5; // Additional offset/delay after animation completes
     private double combatPosX, combatPosY, combatPosZ;   // Player's position in combat before attack
     private float combatYaw, combatPitch;
     private Entity attackTarget = null;
+    
+    /**
+     * Get the animation duration in ticks from Epic Fight animation.
+     * @param isSkill Whether this is a skill animation
+     * @param skillName Name of the skill (if isSkill is true)
+     * @return Animation duration in ticks, or default value if animation not found
+     */
+    private int getAnimationDurationTicks(boolean isSkill, String skillName) {
+        Item heldItem = player.getMainHandItem().getItem();
+        AnimationMappings.WeaponAnimationSet weaponSet = AnimationMappings.animationMappings.get(heldItem);
+        
+        if (weaponSet == null) {
+            LOGGER.warn("No animation mapping found for item: {}", heldItem);
+            return 20; // Default to 1 second (20 ticks)
+        }
+        
+        AnimationManager.AnimationAccessor<? extends AttackAnimation> animationAccessor;
+        if (isSkill) {
+            animationAccessor = weaponSet.skills().get(skillName);
+            if (animationAccessor == null) {
+                LOGGER.warn("No skill animation found for skill: {} with item: {}", skillName, heldItem);
+                return 20; // Default to 1 second
+            }
+        } else {
+            animationAccessor = weaponSet.animation();
+            if (animationAccessor == null) {
+                LOGGER.warn("No attack animation found for item: {}", heldItem);
+                return 20; // Default to 1 second
+            }
+        }
+        
+        try {
+            // Get the actual animation object from the accessor
+            AttackAnimation animation = animationAccessor.get();
+            if (animation != null) {
+                // Get total time in seconds and convert to ticks (20 ticks per second)
+                float totalTimeSeconds = animation.getTotalTime();
+                int totalTicks = Math.round(totalTimeSeconds * 20.0f);
+                LOGGER.info("Animation duration: {} seconds ({} ticks) for {} {}", 
+                    totalTimeSeconds, totalTicks, isSkill ? "skill" : "attack", isSkill ? skillName : "");
+                return totalTicks;
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error getting animation duration: {}", e.getMessage());
+        }
+        
+        return 20; // Default fallback
+    }
     
     /**
      * Perform a basic attack on the target enemy.
@@ -786,6 +837,9 @@ public class CombatInstanceServer {
         combatYaw = player.getYRot();
         combatPitch = player.getXRot();
         attackTarget = target;
+        
+        // Calculate animation duration from Epic Fight animation
+        calculatedAnimationTicks = getAnimationDurationTicks(false, "");
         
         // Calculate position in front of enemy (1.5 blocks away, facing the enemy)
         double dx = target.getX() - player.getX();
@@ -807,11 +861,12 @@ public class CombatInstanceServer {
         isPerformingAttackAnimation = true;
         attackAnimationTicks = 0;
         
-        LOGGER.info("Player dashing to attack {}", target.getName().getString());
+        LOGGER.info("Player dashing to attack {} (animation will take {} ticks)", target.getName().getString(), calculatedAnimationTicks);
     }
     
     /**
      * Process the attack/skill animation sequence (called from tick).
+     * Uses Epic Fight animation duration + offset to determine when to return.
      */
     private void processAttackAnimation() {
         if (!isPerformingAttackAnimation || attackTarget == null) return;
@@ -839,16 +894,21 @@ public class CombatInstanceServer {
             }
         }
         
-        // At ATTACK_RETURN_TICKS, teleport back
-        if (attackAnimationTicks >= ATTACK_RETURN_TICKS) {
+        // Calculate total ticks needed: dash delay + animation duration + offset
+        int totalTicksNeeded = ATTACK_DASH_TICKS + calculatedAnimationTicks + ANIMATION_OFFSET_TICKS;
+        
+        // Teleport back after animation completes + offset
+        if (attackAnimationTicks >= totalTicksNeeded) {
             player.teleportTo(combatPosX, combatPosY, combatPosZ);
             
             isPerformingAttackAnimation = false;
             isSkillAnimation = false;
             animationSkillName = "";
             attackAnimationTicks = 0;
+            calculatedAnimationTicks = 0;
             attackTarget = null;
-            LOGGER.info("Player returned to original position");
+            LOGGER.info("Player returned to original position after {} ticks (animation: {} ticks)", 
+                totalTicksNeeded, calculatedAnimationTicks);
         }
     }
     
@@ -868,6 +928,9 @@ public class CombatInstanceServer {
         attackTarget = target;
         isSkillAnimation = true;
         animationSkillName = skillName;
+        
+        // Calculate animation duration from Epic Fight animation
+        calculatedAnimationTicks = getAnimationDurationTicks(true, skillName);
         
         // Calculate position in front of enemy (1.5 blocks away, facing the enemy)
         double dx = target.getX() - player.getX();
@@ -889,7 +952,8 @@ public class CombatInstanceServer {
         isPerformingAttackAnimation = true;
         attackAnimationTicks = 0;
         
-        LOGGER.info("Player dashing to use skill {} on {}", skillName, target.getName().getString());
+        LOGGER.info("Player dashing to use skill {} on {} (animation will take {} ticks)", 
+            skillName, target.getName().getString(), calculatedAnimationTicks);
     }
     
     /**
