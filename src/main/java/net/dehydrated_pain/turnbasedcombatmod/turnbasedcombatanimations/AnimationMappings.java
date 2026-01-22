@@ -22,7 +22,7 @@ public class AnimationMappings {
 
     public static void init() {
         // Trident
-        animationMappings.put(Items.TRIDENT, new WeaponAnimationSet(Animations.TRIDENT_AUTO1, Map.of()));
+        animationMappings.put(Items.TRIDENT, new WeaponAnimationSet(Animations.TRIDENT_AUTO1, Map.of("auto2", Animations.TRIDENT_AUTO2)));
         
         // Swords
         animationMappings.put(Items.WOODEN_SWORD, new WeaponAnimationSet(Animations.SWORD_AUTO1, Map.of()));

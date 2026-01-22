@@ -11,6 +11,7 @@ import net.dehydrated_pain.turnbasedcombatmod.turnbasedcombatanimations.Animatio
 import net.dehydrated_pain.turnbasedcombatmod.utils.playerturn.EnemyInfo;
 import net.dehydrated_pain.turnbasedcombatmod.ui.CombatUIConfig;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combat.SkillInfo;
 import net.minecraft.client.Camera;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
@@ -58,8 +59,9 @@ public class CombatInstanceClient {
     public static boolean inCombat = false;
     public static boolean isPlayerTurn = false;
     
-    // Selection states - two step process: ability first, then enemy
+    // Selection states - two step process: ability first, then enemy (or skill if skills available)
     public static boolean isSelectingAbility = false;
+    public static boolean isSelectingSkill = false;
     public static boolean isSelectingEnemy = false;
     
     // Enemy selection state
@@ -69,6 +71,11 @@ public class CombatInstanceClient {
     // Ability selection state
     private static int selectedAbilityIndex = 0;
     private static final String[] ABILITIES = {"Attack", "Skill", "Item"};  // U, I, O
+    
+    // Skills list for current weapon
+    public static List<SkillInfo> skillsList = new ArrayList<>();
+    private static int selectedSkillIndex = 0;
+    private static String selectedSkillName = null;
     
     // Camera settings for ABILITY selection (behind player, offset right)
     private static final double ABILITY_CAMERA_DISTANCE = -2.7;  // Distance behind player
@@ -144,7 +151,7 @@ public class CombatInstanceClient {
     @SubscribeEvent
     public static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
         if (!inCombat) return;
-        if (!isSelectingAbility && !isSelectingEnemy) return;
+        if (!isSelectingAbility && !isSelectingSkill && !isSelectingEnemy) return;
         
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
@@ -185,7 +192,7 @@ public class CombatInstanceClient {
     @SubscribeEvent
     public static void onCalculateCameraDistanceSelection(CalculateDetachedCameraDistanceEvent event) {
         if (!inCombat) return;
-        if (!isSelectingAbility && !isSelectingEnemy) return;
+        if (!isSelectingAbility && !isSelectingSkill && !isSelectingEnemy) return;
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
@@ -309,6 +316,7 @@ public class CombatInstanceClient {
                     isSelectingEnemy = false; // Reset selection mode when turn starts
                     enemyInfoList = new ArrayList<>(pkt.enemyInfoList());
                     selectedEnemyIndex = 0; // Start with first enemy (leftmost)
+                    skillsList = new ArrayList<>(pkt.skills());
                 })
                 .exceptionally(e -> {
                     context.disconnect(Component.literal("Failed to handle player turn: " + e.getMessage()));
@@ -390,11 +398,37 @@ public class CombatInstanceClient {
                 return;
             } else if (key == GLFW.GLFW_KEY_I) {
                 selectedAbilityIndex = 1;  // Middle - Skill
+                // Check if skills are available for the current weapon
+                if (!skillsList.isEmpty()) {
+                    // Enter skill selection mode
+                    isSelectingAbility = false;
+                    isSelectingSkill = true;
+                    selectedSkillIndex = 0;
+                    return;
+                }
                 confirmAbilitySelection();
                 return;
             } else if (key == GLFW.GLFW_KEY_O) {
                 selectedAbilityIndex = 2;  // Bottom - Item
                 confirmAbilitySelection();
+                return;
+            }
+        }
+        
+        // Skill selection with U, I, O keys (for up to 3 skills)
+        if (isSelectingSkill) {
+            int skillCount = Math.min(skillsList.size(), 3);
+            if (key == GLFW.GLFW_KEY_Z && skillCount > 0) {
+                selectedSkillIndex = 0;
+                confirmSkillSelection();
+                return;
+            } else if (key == GLFW.GLFW_KEY_X && skillCount > 1) {
+                selectedSkillIndex = 1;
+                confirmSkillSelection();
+                return;
+            } else if (key == GLFW.GLFW_KEY_C && skillCount > 2) {
+                selectedSkillIndex = 2;
+                confirmSkillSelection();
                 return;
             }
         }
@@ -497,7 +531,6 @@ public class CombatInstanceClient {
         defenseOnCooldown = false;
         defenseCooldownTime = 0;
 
-        
         // Send response packet to server (success = true, isParry indicates the type)
         sendParrySuccess(parried, isParry);
         
@@ -505,7 +538,6 @@ public class CombatInstanceClient {
         clearQTE();
     }
 
-    
 
     private static void handleQTETimeout() {
         parried = false;
@@ -536,15 +568,29 @@ public class CombatInstanceClient {
         selectedEnemyIndex = 0;
     }
     
+    private static void confirmSkillSelection() {
+        // Store selected skill name and move to enemy selection
+        if (selectedSkillIndex >= 0 && selectedSkillIndex < skillsList.size()) {
+            selectedSkillName = skillsList.get(selectedSkillIndex).skillName();
+        }
+        isSelectingSkill = false;
+        isSelectingEnemy = true;
+        selectedEnemyIndex = 0;
+    }
+    
     public static void endCombat() {
         Minecraft mc = Minecraft.getInstance();
         inCombat = false;
         isPlayerTurn = false;
         isSelectingAbility = false;
+        isSelectingSkill = false;
         isSelectingEnemy = false;
         enemyInfoList.clear();
         selectedEnemyIndex = 0;
         selectedAbilityIndex = 0;
+        selectedSkillIndex = 0;
+        selectedSkillName = null;
+        skillsList.clear();
         mc.options.setCameraType(CameraType.FIRST_PERSON);
         
         // Clear QTE state when combat ends
@@ -562,7 +608,7 @@ public class CombatInstanceClient {
     public static boolean hasParried() {
         return parried;
     }
-    
+
     /**
      * Gets whether a QTE is currently active
      */
@@ -586,7 +632,7 @@ public class CombatInstanceClient {
         int screenHeight = event.getGuiGraphics().guiHeight();
         
         // Show turn indicator button when no selection mode is active
-        if (!isSelectingAbility && !isSelectingEnemy) {
+        if (!isSelectingAbility && !isSelectingSkill && !isSelectingEnemy) {
             CombatUIConfig.TurnIndicatorConfig config = CombatUIConfig.getTurnIndicator();
             
             int x = (screenWidth - config.width) / 2;
@@ -598,6 +644,11 @@ public class CombatInstanceClient {
         // Step 1: Ability selection UI
         if (isSelectingAbility) {
             renderAbilitySelectionUI(guiGraphics, mc, screenWidth, screenHeight);
+        }
+        
+        // Skill selection UI
+        if (isSelectingSkill) {
+            renderSkillSelectionUI(guiGraphics, mc, screenWidth, screenHeight);
         }
         
         // Step 2: Enemy selection UI
@@ -626,6 +677,27 @@ public class CombatInstanceClient {
             guiGraphics.drawString(mc.font, label, labelX, labelY, 0xFFFFFFFF);
         }
     }
+    
+    private static void renderSkillSelectionUI(GuiGraphics guiGraphics, Minecraft mc, int screenWidth, int screenHeight) {
+        CombatUIConfig.TurnIndicatorConfig config = CombatUIConfig.getTurnIndicator();
+        
+        // Calculate positions using class attributes
+        int barX = screenWidth / 2 + ABILITY_BAR_X_OFFSET;
+        int skillCount = Math.min(skillsList.size(), 3); // Show up to 3 skills
+        int startY = (screenHeight - (ABILITY_BAR_HEIGHT * skillCount + 20)) / 2;
+        
+        for (int i = 0; i < skillCount; i++) {
+            int barY = startY + i * ABILITY_BUTTON_SPACING;
+            
+            guiGraphics.blit(config.image, barX, barY, ABILITY_BAR_WIDTH, ABILITY_BAR_HEIGHT, 0, 0, config.width, config.height, config.width, config.height);
+            
+            String skillName = skillsList.get(i).skillName();
+            String label = KEY_LABELS[i] + " " + skillName;
+            int labelX = barX + 8;
+            int labelY = barY + (ABILITY_BAR_HEIGHT - 8) / 2;
+            guiGraphics.drawString(mc.font, label, labelX, labelY, 0xFFFFFFFF);
+        }
+    }
 
     @SubscribeEvent
     public static void onMouseClick(InputEvent.InteractionKeyMappingTriggered event) {
@@ -634,7 +706,7 @@ public class CombatInstanceClient {
         if (event.isAttack()) {
             
             // Step 0: Start ability selection
-            if (!isSelectingAbility && !isSelectingEnemy) {
+            if (!isSelectingAbility && !isSelectingSkill && !isSelectingEnemy) {
                 isSelectingAbility = true;
                 selectedAbilityIndex = 0;
                 event.setCanceled(true);
@@ -647,7 +719,8 @@ public class CombatInstanceClient {
                 isSelectingAbility = false;
                 isSelectingEnemy = false;
                 // Send the selected ability and enemy to the server
-                PacketDistributor.sendToServer(new EndPlayerTurnPacket(selectedAbilityIndex, selectedEnemyIndex));
+                String skillName = (selectedAbilityIndex == EndPlayerTurnPacket.ABILITY_SKILL) ? selectedSkillName : "";
+                PacketDistributor.sendToServer(new EndPlayerTurnPacket(selectedAbilityIndex, selectedEnemyIndex, skillName));
             }
             event.setCanceled(true);
         }

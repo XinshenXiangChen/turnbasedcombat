@@ -1,6 +1,7 @@
 package net.dehydrated_pain.turnbasedcombatmod.network;
 
 import io.netty.buffer.ByteBuf;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combat.SkillInfo;
 import net.dehydrated_pain.turnbasedcombatmod.utils.playerturn.EnemyInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
@@ -13,7 +14,7 @@ import java.util.List;
 
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 
-public record PlayerTurnPacket(List<EnemyInfo> enemyInfoList) implements CustomPacketPayload {
+public record PlayerTurnPacket(List<EnemyInfo> enemyInfoList, List<SkillInfo> skills) implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<PlayerTurnPacket> TYPE = new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(MODID, "player_turn"));
 
@@ -25,9 +26,19 @@ public record PlayerTurnPacket(List<EnemyInfo> enemyInfoList) implements CustomP
             EnemyInfo::new
     );
 
+    public static final StreamCodec<ByteBuf, SkillInfo> SKILL_INFO_CODEC = StreamCodec.composite(
+            ByteBufCodecs.STRING_UTF8,
+            SkillInfo::skillName,
+            ByteBufCodecs.DOUBLE,
+            SkillInfo::skillHungerCost,
+            SkillInfo::new
+    );
+
     public static final StreamCodec<ByteBuf, PlayerTurnPacket> STREAM_CODEC = StreamCodec.composite(
             ENEMY_INFO_CODEC.apply(ByteBufCodecs.list()),
             PlayerTurnPacket::enemyInfoList,
+            SKILL_INFO_CODEC.apply(ByteBufCodecs.list()),
+            PlayerTurnPacket::skills,
             PlayerTurnPacket::new
     );
 

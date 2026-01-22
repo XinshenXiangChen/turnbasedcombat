@@ -8,13 +8,14 @@ import net.minecraft.resources.ResourceLocation;
 
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 
-public record EndPlayerTurnPacket(int abilityIndex, int enemyIndex) implements CustomPacketPayload {
+public record EndPlayerTurnPacket(int abilityIndex, int enemyIndex, String skillName) implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<EndPlayerTurnPacket> TYPE = new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(MODID, "end_player_turn"));
 
     public static final StreamCodec<ByteBuf, EndPlayerTurnPacket> STREAM_CODEC = StreamCodec.composite(
             ByteBufCodecs.INT, EndPlayerTurnPacket::abilityIndex,
             ByteBufCodecs.INT, EndPlayerTurnPacket::enemyIndex,
+            ByteBufCodecs.STRING_UTF8, EndPlayerTurnPacket::skillName,
             EndPlayerTurnPacket::new
     );
 

@@ -1,9 +1,16 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
-import net.dehydrated_pain.turnbasedcombatmod.network.*;
+import net.dehydrated_pain.turnbasedcombatmod.network.EndCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.EndPlayerTurnPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.PlayerTurnPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
 import net.dehydrated_pain.turnbasedcombatmod.utils.playerturn.EnemyInfo;
 import net.dehydrated_pain.turnbasedcombatmod.structuregen.StructurePlacer;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
+import net.dehydrated_pain.turnbasedcombatmod.utils.combat.SkillInfo;
+import net.dehydrated_pain.turnbasedcombatmod.turnbasedcombatanimations.AnimationMappings;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -16,6 +23,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.RelativeMovement;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
@@ -36,6 +44,7 @@ import java.util.stream.Collectors;
 
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.LOGGER;
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
+import static net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE;
 
 @EventBusSubscriber(modid = MODID)
 public class CombatInstanceServer {
@@ -611,8 +620,19 @@ public class CombatInstanceServer {
             }
         }
         
+        // Get skills for the currently held weapon
+        List<SkillInfo> skills = new ArrayList<>();
+        Item heldItem = player.getMainHandItem().getItem();
+        AnimationMappings.WeaponAnimationSet weaponSet = AnimationMappings.animationMappings.get(heldItem);
+        if (weaponSet != null && weaponSet.skills() != null) {
+            for (String skillName : weaponSet.skills().keySet()) {
+                // For now, set hunger cost to null (will be configured later)
+                skills.add(new SkillInfo(skillName, 1.));
+            }
+        }
+        
         if (!enemyInfoList.isEmpty()) {
-            PacketDistributor.sendToPlayer(player, new PlayerTurnPacket(enemyInfoList));
+            PacketDistributor.sendToPlayer(player, new PlayerTurnPacket(enemyInfoList, skills));
         } else {
             LOGGER.warn("No alive enemies found to send in PlayerTurnPacket");
         }
@@ -677,9 +697,10 @@ public class CombatInstanceServer {
             if (instance != null) {
                 int abilityIndex = pkt.abilityIndex();
                 int enemyIndex = pkt.enemyIndex();
+                String skillName = pkt.skillName();
                 
                 // Execute the player's action based on ability
-                instance.executePlayerAction(abilityIndex, enemyIndex);
+                instance.executePlayerAction(abilityIndex, enemyIndex, skillName);
                 
                 // Finish player's turn
                 instance.entityTurnFinished = true;
@@ -695,8 +716,9 @@ public class CombatInstanceServer {
      * Execute the player's action based on selected ability and target enemy.
      * @param abilityIndex 0=Attack, 1=Skill, 2=Item
      * @param enemyIndex index of the target enemy
+     * @param skillName name of the skill if abilityIndex is SKILL, empty string otherwise
      */
-    private void executePlayerAction(int abilityIndex, int enemyIndex) {
+    private void executePlayerAction(int abilityIndex, int enemyIndex, String skillName) {
         // Get the target enemy
         Entity targetEnemy = getEnemyByIndex(enemyIndex);
         if (targetEnemy == null) {
@@ -710,8 +732,8 @@ public class CombatInstanceServer {
                 performPlayerAttack(targetEnemy);
             }
             case EndPlayerTurnPacket.ABILITY_SKILL -> {
-                // Skill - placeholder for special abilities
-                performPlayerSkill(targetEnemy);
+                // Skill - teleport and use skill animation
+                performPlayerSkill(targetEnemy, skillName);
             }
             case EndPlayerTurnPacket.ABILITY_ITEM -> {
                 // Item - placeholder for item usage
@@ -739,8 +761,10 @@ public class CombatInstanceServer {
         return null;
     }
     
-    // Attack animation state
+    // Attack/Skill animation state
     private boolean isPerformingAttackAnimation = false;
+    private boolean isSkillAnimation = false;
+    private String animationSkillName = "";
     private int attackAnimationTicks = 0;
     private static final int ATTACK_DASH_TICKS = 5;      // Time to stay at enemy before attacking
     private static final int ATTACK_RETURN_TICKS = 10;   // Time before teleporting back
@@ -787,22 +811,32 @@ public class CombatInstanceServer {
     }
     
     /**
-     * Process the attack animation sequence (called from tick).
+     * Process the attack/skill animation sequence (called from tick).
      */
-    // TODO recieve the param of if isSkill and if isSkill what skill it is, this means that the client also needs to know all trident skills
     private void processAttackAnimation() {
         if (!isPerformingAttackAnimation || attackTarget == null) return;
         
         attackAnimationTicks++;
         
-        // At ATTACK_DASH_TICKS, deal damage
+        // At ATTACK_DASH_TICKS, deal damage and trigger animation
         if (attackAnimationTicks == ATTACK_DASH_TICKS) {
-            float damage = (float) player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
-            
-
-            PacketDistributor.sendToPlayer(player, new TriggerEpicFightAttackPacket(false, ""));
-            
-            LOGGER.info("Player attacked {} for {} damage", attackTarget.getName().getString(), damage);
+            if (isSkillAnimation) {
+                // Skill animation
+                float damage = (float) (player.getAttributeValue(ATTACK_DAMAGE) * 1.5);
+                attackTarget.hurt(player.damageSources().playerAttack(player), damage);
+                
+                PacketDistributor.sendToPlayer(player, new net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket(true, animationSkillName));
+                
+                LOGGER.info("Player used skill {} on {} for {} damage", animationSkillName, attackTarget.getName().getString(), damage);
+            } else {
+                // Normal attack animation
+                float damage = (float) player.getAttributeValue(ATTACK_DAMAGE);
+                attackTarget.hurt(player.damageSources().playerAttack(player), damage);
+                
+                PacketDistributor.sendToPlayer(player, new net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket(false, ""));
+                
+                LOGGER.info("Player attacked {} for {} damage", attackTarget.getName().getString(), damage);
+            }
         }
         
         // At ATTACK_RETURN_TICKS, teleport back
@@ -810,6 +844,8 @@ public class CombatInstanceServer {
             player.teleportTo(combatPosX, combatPosY, combatPosZ);
             
             isPerformingAttackAnimation = false;
+            isSkillAnimation = false;
+            animationSkillName = "";
             attackAnimationTicks = 0;
             attackTarget = null;
             LOGGER.info("Player returned to original position");
@@ -818,12 +854,42 @@ public class CombatInstanceServer {
     
     /**
      * Perform a skill on the target enemy.
+     * Teleports player to enemy, uses skill, then teleports back.
      */
-    private void performPlayerSkill(Entity target) {
-
-        float damage = (float) (player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE) * 1.5);
-        target.hurt(player.damageSources().playerAttack(player), damage);
-        LOGGER.info("Player used skill on {} for {} damage", target.getName().getString(), damage);
+    private void performPlayerSkill(Entity target, String skillName) {
+        if (player == null || target == null) return;
+        
+        // Store player's combat position (where to return after skill)
+        combatPosX = player.getX();
+        combatPosY = player.getY();
+        combatPosZ = player.getZ();
+        combatYaw = player.getYRot();
+        combatPitch = player.getXRot();
+        attackTarget = target;
+        isSkillAnimation = true;
+        animationSkillName = skillName;
+        
+        // Calculate position in front of enemy (1.5 blocks away, facing the enemy)
+        double dx = target.getX() - player.getX();
+        double dz = target.getZ() - player.getZ();
+        double distance = Math.sqrt(dx * dx + dz * dz);
+        
+        double attackDistance = 1.5;
+        double attackX = target.getX() - (dx / distance) * attackDistance;
+        double attackZ = target.getZ() - (dz / distance) * attackDistance;
+        double attackY = target.getY();
+        
+        // Calculate yaw to face the enemy
+        float yaw = (float) (Math.atan2(-dx, dz) * (180.0 / Math.PI));
+        
+        // Teleport player to attack position
+        player.teleportTo(attackX, attackY, attackZ);
+        
+        // Start skill animation sequence
+        isPerformingAttackAnimation = true;
+        attackAnimationTicks = 0;
+        
+        LOGGER.info("Player dashing to use skill {} on {}", skillName, target.getName().getString());
     }
     
     /**
