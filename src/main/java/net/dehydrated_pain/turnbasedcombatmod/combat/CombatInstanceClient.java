@@ -1,12 +1,6 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
-import net.dehydrated_pain.turnbasedcombatmod.network.EndCombatPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.EndPlayerTurnPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.PlayerTurnPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.*;
 import net.dehydrated_pain.turnbasedcombatmod.turnbasedcombatanimations.AnimationMappings;
 import net.dehydrated_pain.turnbasedcombatmod.utils.playerturn.EnemyInfo;
 import net.dehydrated_pain.turnbasedcombatmod.ui.CombatUIConfig;
@@ -40,6 +34,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.lwjgl.glfw.GLFW;
 import yesman.epicfight.api.animation.AnimationManager;
 import yesman.epicfight.api.animation.types.AttackAnimation;
+import yesman.epicfight.api.animation.types.StaticAnimation;
 import yesman.epicfight.gameasset.Animations;
 import yesman.epicfight.world.capabilities.EpicFightCapabilities;
 import yesman.epicfight.world.capabilities.entitypatch.player.PlayerPatch;
@@ -292,7 +287,7 @@ public class CombatInstanceClient {
                 })
                 .exceptionally(e -> {
                     // Handle exception, optional
-                    context.disconnect(net.minecraft.network.chat.Component.literal("Failed to start combat: " + e.getMessage()));
+                    context.disconnect(Component.literal("Failed to start combat: " + e.getMessage()));
                     return null;
                 });
     }
@@ -304,7 +299,7 @@ public class CombatInstanceClient {
                 })
                 .exceptionally(e -> {
                     // Handle exception, optional
-                    context.disconnect(net.minecraft.network.chat.Component.literal("Failed to end combat: " + e.getMessage()));
+                    context.disconnect(Component.literal("Failed to end combat: " + e.getMessage()));
                     return null;
                 });
     }
@@ -362,6 +357,40 @@ public class CombatInstanceClient {
         });
     }
 
+    public static void triggerParryAnimationNetworkHandler(final TriggerParryAnimationPacket pkt, final IPayloadContext context) {
+        context.enqueueWork(() -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player != null) {
+                triggerParryAnimation(mc.player, pkt.parryType());
+            }
+        });
+    }
+    
+    /**
+     * Trigger the appropriate parry animation based on the parry type
+     */
+    private static void triggerParryAnimation(Player player, ParryTypes parryType) {
+        PlayerPatch patch = EpicFightCapabilities.getEntityPatch(player, PlayerPatch.class);
+        Item heldItem = player.getMainHandItem().getItem();
+        
+        if (patch == null) return;
+        
+        AnimationMappings.WeaponAnimationSet weaponSet = AnimationMappings.animationMappings.get(heldItem);
+        if (weaponSet == null) return;
+        
+        AnimationManager.AnimationAccessor<? extends StaticAnimation> parryAnimation = null;
+        
+        switch (parryType) {
+            case PARRY -> parryAnimation = weaponSet.parry();
+            case JUMP -> parryAnimation = weaponSet.parryJump();
+            case CROUCH -> parryAnimation = weaponSet.parryShift();
+        }
+        
+        if (parryAnimation != null) {
+            patch.playAnimationInstantly(parryAnimation);
+        }
+    }
+
     public static void qteRequesteNetworkHandler(final QTERequestPacket pkt, final IPayloadContext context) {
         // Main thread work
         context.enqueueWork(() -> {
@@ -404,9 +433,8 @@ public class CombatInstanceClient {
                     isSelectingAbility = false;
                     isSelectingSkill = true;
                     selectedSkillIndex = 0;
-                    return;
                 }
-                confirmAbilitySelection();
+                // If no skills available, do nothing (don't proceed to enemy selection)
                 return;
             } else if (key == GLFW.GLFW_KEY_O) {
                 selectedAbilityIndex = 2;  // Bottom - Item
@@ -701,10 +729,16 @@ public class CombatInstanceClient {
 
     @SubscribeEvent
     public static void onMouseClick(InputEvent.InteractionKeyMappingTriggered event) {
-        if (!inCombat || !isPlayerTurn) return;
+        if (!inCombat) return;
+        
+        // Block all clicks when not player's turn
+        if (!isPlayerTurn) {
+            event.setCanceled(true);
+            event.setSwingHand(false);
+            return;
+        }
         
         if (event.isAttack()) {
-            
             // Step 0: Start ability selection
             if (!isSelectingAbility && !isSelectingSkill && !isSelectingEnemy) {
                 isSelectingAbility = true;
@@ -723,6 +757,25 @@ public class CombatInstanceClient {
                 PacketDistributor.sendToServer(new EndPlayerTurnPacket(selectedAbilityIndex, selectedEnemyIndex, skillName));
             }
             event.setCanceled(true);
+        } else {
+            // Block right-click (use) actions
+            event.setCanceled(true);
+            event.setSwingHand(false);
         }
     }
+    
+    @SubscribeEvent
+    public static void onScreenOpen(net.neoforged.neoforge.client.event.ScreenEvent.Opening event) {
+        if (!inCombat) return;
+        
+        // Block inventory and other screen openings during combat
+        // Allow chat and pause menu
+        if (event.getScreen() instanceof net.minecraft.client.gui.screens.ChatScreen ||
+            event.getScreen() instanceof net.minecraft.client.gui.screens.PauseScreen) {
+            return;
+        }
+        
+        event.setCanceled(true);
+    }
+    
 }

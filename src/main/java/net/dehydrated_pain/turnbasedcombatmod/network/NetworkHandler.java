@@ -42,9 +42,15 @@ public class NetworkHandler {
         );
 
         registrar.playToClient(
-                net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket.TYPE,
-                net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket.STREAM_CODEC,
+                TriggerEpicFightAttackPacket.TYPE,
+                TriggerEpicFightAttackPacket.STREAM_CODEC,
                 CombatInstanceClient::triggerEpicFightAttackNetworkHandler
+        );
+
+        registrar.playToClient(
+                TriggerParryAnimationPacket.TYPE,
+                TriggerParryAnimationPacket.STREAM_CODEC,
+                CombatInstanceClient::triggerParryAnimationNetworkHandler
         );
 
         // client to server

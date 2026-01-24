@@ -5,6 +5,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import yesman.epicfight.api.animation.AnimationManager;
 import yesman.epicfight.api.animation.types.AttackAnimation;
+import yesman.epicfight.api.animation.types.StaticAnimation;
 import yesman.epicfight.gameasset.Animations;
 
 import java.util.HashMap;
@@ -13,8 +14,21 @@ import java.util.Map;
 public class AnimationMappings {
     public record WeaponAnimationSet(
             AnimationManager.AnimationAccessor<? extends AttackAnimation> animation,
-            Map<String, AnimationManager.AnimationAccessor<? extends AttackAnimation>> skills
-    ) {}
+            Map<String, AnimationManager.AnimationAccessor<? extends AttackAnimation>> skills,
+            // Parry animations - TODO: Will probably have to change to extend AttackAnimation 
+            AnimationManager.AnimationAccessor<? extends StaticAnimation> parry,      
+            AnimationManager.AnimationAccessor<? extends StaticAnimation> parryJump,   
+            AnimationManager.AnimationAccessor<? extends StaticAnimation> parryShift   
+    ) {
+        // Constructor with just attack animation and skills (no parry animations - uses null)
+        public WeaponAnimationSet(
+                AnimationManager.AnimationAccessor<? extends AttackAnimation> animation,
+                Map<String, AnimationManager.AnimationAccessor<? extends AttackAnimation>> skills
+        ) {
+            // TODO: change the animation to proper parry animations
+            this(animation, skills, animation, animation, animation);
+        }
+    }
 
 
     public static Map<Item, WeaponAnimationSet> animationMappings = new HashMap<>();

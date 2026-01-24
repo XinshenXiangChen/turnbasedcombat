@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.neoforged.bus.api.EventPriority;
@@ -18,6 +19,8 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
+import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
+import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
@@ -116,15 +119,54 @@ public class PlayerCombatEvents {
         if (!combatInstance.isEnemy(attacker.getUUID())) return;
 
         event.setCanceled(true);
-        combatInstance.storePendingDamage(event.getSource(), event.getAmount());
         
-        LOGGER.info("Enemy attacked player, initiating parry QTE. Damage: {}", event.getAmount());
-
         // TODO: get the attack type somehow probably register all possible attacks and their parry type
-        PacketDistributor.sendToPlayer(player, new QTERequestPacket(ParryTypes.JUMP));
+        ParryTypes parryType = ParryTypes.JUMP; // Default for now
+        
+        combatInstance.storePendingDamage(event.getSource(), event.getAmount(), parryType);
+        
+        LOGGER.info("Enemy attacked player, initiating parry QTE. Damage: {}, ParryType: {}", event.getAmount(), parryType);
+
+        PacketDistributor.sendToPlayer(player, new QTERequestPacket(parryType));
     }
 
     
+
+    /**
+     * Block item dropping/throwing during combat
+     */
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onItemToss(ItemTossEvent event) {
+        if (!(event.getPlayer() instanceof ServerPlayer player)) return;
+        
+        if (inCombatDimension(player)) {
+            // Cancel the toss - this prevents the item entity from spawning
+            event.setCanceled(true);
+            
+            // The item was already removed from inventory, so we need to give it back
+            ItemStack droppedItem = event.getEntity().getItem();
+            if (!droppedItem.isEmpty()) {
+                // Try to add back to inventory, or it will be lost
+                if (!player.getInventory().add(droppedItem)) {
+                    // If inventory is full, just let it drop (shouldn't happen normally)
+                    event.setCanceled(false);
+                }
+            }
+            LOGGER.debug("Blocked item toss in combat dimension, returned item to inventory");
+        }
+    }
+    
+    /**
+     * Block item pickup during combat (optional, but keeps combat clean)
+     */
+    @SubscribeEvent
+    public static void onItemPickup(ItemEntityPickupEvent.Pre event) {
+        if (!(event.getPlayer() instanceof ServerPlayer player)) return;
+        
+        if (inCombatDimension(player)) {
+            event.setCanPickup(net.neoforged.neoforge.common.util.TriState.FALSE);
+        }
+    }
 
     private static boolean inCombatDimension(ServerPlayer player) {
         // Target dimension
@@ -136,7 +178,5 @@ public class PlayerCombatEvents {
         if (currentLevel == targetLevel) return true;
         return false;
     }
-
-
 
 }

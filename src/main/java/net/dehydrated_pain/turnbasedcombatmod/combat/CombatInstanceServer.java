@@ -1,11 +1,6 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
-import net.dehydrated_pain.turnbasedcombatmod.network.EndCombatPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.EndPlayerTurnPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.PlayerTurnPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.QTERequestPacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.QTEResponsePacket;
-import net.dehydrated_pain.turnbasedcombatmod.network.StartCombatPacket;
+import net.dehydrated_pain.turnbasedcombatmod.network.*;
 import net.dehydrated_pain.turnbasedcombatmod.utils.playerturn.EnemyInfo;
 import net.dehydrated_pain.turnbasedcombatmod.structuregen.StructurePlacer;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
@@ -77,12 +72,13 @@ public class CombatInstanceServer {
     private boolean hasPendingDamage = false;
     private int pendingDamageTicks = 0;
     private static final int PARRY_RESPONSE_TIMEOUT_TICKS = 40; // 2 seconds at 20 TPS
+    private ParryTypes pendingParryType = null; // Store the type of parry requested for animation
     // Flag to prevent event handler from canceling damage when we're intentionally applying pending damage
     private boolean isApplyingPendingDamage = false;
 
-    // TODO: add a timer for mobs to wait a little but before the next mob attacks
-
-
+    // Delay after each attack before next turn (in ticks, 20 ticks = 1 second)
+    private static final int POST_ATTACK_DELAY_TICKS = 30;
+    private int postAttackDelayCounter = 0;
 
     private static final Integer ENEMY_SEPARATION = 3;
 
@@ -160,6 +156,11 @@ public class CombatInstanceServer {
             return;
         }
 
+        // Wait for post-attack delay before starting next turn
+        if (postAttackDelayCounter > 0) {
+            postAttackDelayCounter--;
+            return;
+        }
 
         if (!entityTurnFinished && currentBattleEntity != null && currentBattleEntity.isAlive()) {
             if (currentBattleEntity instanceof ServerPlayer && currentBattleEntity == player) {
@@ -447,9 +448,10 @@ public class CombatInstanceServer {
         LOGGER.info(battleQueue.toString());
         battleQueue.offer(enemy.getUUID());
         
-        // Mark turn as finished
+        // Mark turn as finished and start delay
         entityTurnFinished = true;
         currentBattleEntity = null;
+        postAttackDelayCounter = POST_ATTACK_DELAY_TICKS;
     }
 
 
@@ -664,11 +666,17 @@ public class CombatInstanceServer {
                 instance.pendingDamageTicks = 0;
 
                 if (success) {
-                    // Parry succeeded - cancel damage
-                    LOGGER.info("Parry successful - damage cancelled");
+                    // Parry succeeded - cancel damage and trigger parry animation
+                    LOGGER.info("Parry successful ({}) - damage cancelled", instance.pendingParryType);
                     instance.hasPendingDamage = false;
                     instance.pendingDamageSource = null;
                     instance.pendingDamageAmount = 0.0f;
+                    
+                    // Send packet to client to play the parry animation
+                    if (instance.pendingParryType != null) {
+                        PacketDistributor.sendToPlayer(player, new TriggerParryAnimationPacket(instance.pendingParryType));
+                    }
+                    instance.pendingParryType = null;
                 } else {
                     // Parry failed - apply stored damage
                     if (instance.pendingDamageSource != null && player.isAlive()) {
@@ -704,10 +712,11 @@ public class CombatInstanceServer {
                 // Execute the player's action based on ability
                 instance.executePlayerAction(abilityIndex, enemyIndex, skillName);
                 
-                // Finish player's turn
+                // Finish player's turn and start delay
                 instance.entityTurnFinished = true;
                 instance.hasSentPlayerTurnPacket = false;
                 instance.battleQueue.offer(player.getUUID());
+                instance.postAttackDelayCounter = POST_ATTACK_DELAY_TICKS;
                 LOGGER.info("Player {} finished their turn with ability {} on enemy {}", 
                     player.getName().getString(), abilityIndex, enemyIndex);
             }
@@ -967,11 +976,12 @@ public class CombatInstanceServer {
     /**
      * Store pending damage information for parry mechanic
      */
-    public void storePendingDamage(DamageSource damageSource, float damageAmount) {
+    public void storePendingDamage(DamageSource damageSource, float damageAmount, ParryTypes parryType) {
         this.pendingDamageSource = damageSource;
         this.pendingDamageAmount = damageAmount;
         this.hasPendingDamage = true;
         this.pendingDamageTicks = PARRY_RESPONSE_TIMEOUT_TICKS;
+        this.pendingParryType = parryType;
         this.sucessfullParry = false; // Reset parry state for new attack
     }
     
