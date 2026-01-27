@@ -938,7 +938,7 @@ public class CombatInstanceServer {
     
     /**
      * Process parry animation delay - waits for the parry counter-attack animation to complete
-     * before teleporting the enemy back to their position.
+     * before teleporting the player and enemy back to their positions.
      */
     private void processParryAnimationDelay() {
         if (!waitingForParryAnimation) return;
@@ -946,7 +946,12 @@ public class CombatInstanceServer {
         parryAnimationDelayCounter--;
         
         if (parryAnimationDelayCounter <= 0) {
-            // Delay complete - now finish the enemy turn (teleport enemy back)
+            // Delay complete - teleport player back to spawn position
+            if (player != null && player.isAlive()) {
+                player.teleportTo(PLAYER_SPAWN_POS.getX(), PLAYER_SPAWN_POS.getY(), PLAYER_SPAWN_POS.getZ());
+            }
+            
+            // Now finish the enemy turn (teleport enemy back)
             waitingForParryAnimation = false;
             parryAnimationDelayCounter = 0;
             LOGGER.info("Parry animation delay complete - finishing enemy turn");
