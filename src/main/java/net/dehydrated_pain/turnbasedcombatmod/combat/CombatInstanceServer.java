@@ -80,6 +80,11 @@ public class CombatInstanceServer {
     private static final int POST_ATTACK_DELAY_TICKS = 30;
     private int postAttackDelayCounter = 0;
 
+    // Delay after successful parry to let the parry counter-attack animation play (in ticks)
+    private static final int PARRY_ANIMATION_DELAY_TICKS = 20; // 1 second for parry animation
+    private int parryAnimationDelayCounter = 0;
+    private boolean waitingForParryAnimation = false;
+
     private static final Integer ENEMY_SEPARATION = 3;
 
     // battle stuff
@@ -139,9 +144,11 @@ public class CombatInstanceServer {
         activeCombatInstances.values().forEach(CombatInstanceServer::turnBasedCombat);
         // Process attack animations
         activeCombatInstances.values().forEach(CombatInstanceServer::processAttackAnimation);
+        // Process parry animation delays
+        activeCombatInstances.values().forEach(CombatInstanceServer::processParryAnimationDelay);
         // Process pending damage timeouts
         activeCombatInstances.values().forEach(CombatInstanceServer::processPendingDamageTimeout);
-        // Remove instances where combat has ended (player is no longer in combat dimension)
+        // Remove instances where combat has ended 
         activeCombatInstances.entrySet().removeIf(entry -> {
             CombatInstanceServer instance = entry.getValue();
             return instance.player == null || 
@@ -335,7 +342,7 @@ public class CombatInstanceServer {
                     originalX, originalY, originalZ, originalLevel.dimension().location());
         }
         
-        // If player died, teleport ALL enemies back to their original locations
+        // If player died, teleport back and restore ai
         if (playerDied && enemyOriginalLevels != null && enemyOriginalPositions != null) {
             for (UUID enemyUUID : enemyUUIDs) {
                 Entity enemy = combatServerLevel.getEntity(enemyUUID);
@@ -352,6 +359,13 @@ public class CombatInstanceServer {
                                 originalRot.x,
                                 originalRot.y
                         );
+                        
+                        // Restore AI for the enemy after teleporting back
+                        if (enemy instanceof Mob mob) {
+                            mob.setNoAi(false);
+
+                        }
+                        
                         LOGGER.info("Teleported enemy {} back to original position at ({}, {}, {})",
                                 enemyUUID, originalPos.getX(), originalPos.getY(), originalPos.getZ());
                     }
@@ -677,6 +691,11 @@ public class CombatInstanceServer {
                         PacketDistributor.sendToPlayer(player, new TriggerParryAnimationPacket(instance.pendingParryType));
                     }
                     instance.pendingParryType = null;
+                    
+                    // Start delay to let parry counter-attack animation play before enemy teleports back
+                    instance.waitingForParryAnimation = true;
+                    instance.parryAnimationDelayCounter = PARRY_ANIMATION_DELAY_TICKS;
+                    LOGGER.info("Starting parry animation delay ({} ticks) before enemy teleports back", PARRY_ANIMATION_DELAY_TICKS);
                 } else {
                     // Parry failed - apply stored damage
                     if (instance.pendingDamageSource != null && player.isAlive()) {
@@ -691,10 +710,14 @@ public class CombatInstanceServer {
                     instance.hasPendingDamage = false;
                     instance.pendingDamageSource = null;
                     instance.pendingDamageAmount = 0.0f;
+                    
+                    // Parry failed - finish enemy turn immediately
+                    instance.finishEnemyTurn();
                 }
+            } else {
+                // No pending damage - finish enemy turn immediately
+                instance.finishEnemyTurn();
             }
-
-            instance.finishEnemyTurn();
         }
     }
 
@@ -910,6 +933,24 @@ public class CombatInstanceServer {
             attackTarget = null;
             LOGGER.info("Player returned to original position after {} ticks (animation: {} ticks)", 
                 totalTicksNeeded, calculatedAnimationTicks);
+        }
+    }
+    
+    /**
+     * Process parry animation delay - waits for the parry counter-attack animation to complete
+     * before teleporting the enemy back to their position.
+     */
+    private void processParryAnimationDelay() {
+        if (!waitingForParryAnimation) return;
+        
+        parryAnimationDelayCounter--;
+        
+        if (parryAnimationDelayCounter <= 0) {
+            // Delay complete - now finish the enemy turn (teleport enemy back)
+            waitingForParryAnimation = false;
+            parryAnimationDelayCounter = 0;
+            LOGGER.info("Parry animation delay complete - finishing enemy turn");
+            finishEnemyTurn();
         }
     }
     
