@@ -18,6 +18,7 @@ import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
+import net.neoforged.neoforge.event.entity.living.LivingKnockBackEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
 import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
@@ -165,6 +166,18 @@ public class PlayerCombatEvents {
         
         if (inCombatDimension(player)) {
             event.setCanPickup(net.neoforged.neoforge.common.util.TriState.FALSE);
+        }
+    }
+
+    /**
+     * Disable all knockback on the player in the combat dimension
+     */
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onPlayerKnockback(LivingKnockBackEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        
+        if (inCombatDimension(player)) {
+            event.setCanceled(true);
         }
     }
 

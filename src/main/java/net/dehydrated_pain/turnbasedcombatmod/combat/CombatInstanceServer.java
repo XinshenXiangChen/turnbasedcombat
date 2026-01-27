@@ -778,8 +778,8 @@ public class CombatInstanceServer {
     private String animationSkillName = "";
     private int attackAnimationTicks = 0;
     private int calculatedAnimationTicks = 0;  // Calculated from Epic Fight animation duration
-    private static final int ATTACK_DASH_TICKS = 5;      // Time to stay at enemy before attacking (delay before animation starts)
-    private static final int ANIMATION_OFFSET_TICKS = 5; // Additional offset/delay after animation completes
+    private static final int TELEPORT_DELAY_TICKS = 2;    // Time to teleport to enemy (0.1 seconds = 2 ticks)
+    private static final int ANIMATION_OFFSET_TICKS = 4; // Additional offset/delay after animation completes (0.2 seconds = 4 ticks)
     private double combatPosX, combatPosY, combatPosZ;   // Player's position in combat before attack
     private float combatYaw, combatPitch;
     private Entity attackTarget = null;
@@ -882,29 +882,21 @@ public class CombatInstanceServer {
         
         attackAnimationTicks++;
         
-        // At ATTACK_DASH_TICKS, deal damage and trigger animation
-        if (attackAnimationTicks == ATTACK_DASH_TICKS) {
+        // At TELEPORT_DELAY_TICKS, deal damage and trigger animation
+        if (attackAnimationTicks == TELEPORT_DELAY_TICKS) {
             if (isSkillAnimation) {
-                // Skill animation
-                float damage = (float) (player.getAttributeValue(ATTACK_DAMAGE) * 1.5);
-                attackTarget.hurt(player.damageSources().playerAttack(player), damage);
-                
+ 
                 PacketDistributor.sendToPlayer(player, new net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket(true, animationSkillName));
-                
-                LOGGER.info("Player used skill {} on {} for {} damage", animationSkillName, attackTarget.getName().getString(), damage);
+
             } else {
-                // Normal attack animation
-                float damage = (float) player.getAttributeValue(ATTACK_DAMAGE);
-                attackTarget.hurt(player.damageSources().playerAttack(player), damage);
                 
                 PacketDistributor.sendToPlayer(player, new net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket(false, ""));
-                
-                LOGGER.info("Player attacked {} for {} damage", attackTarget.getName().getString(), damage);
+
             }
         }
         
-        // Calculate total ticks needed: dash delay + animation duration + offset
-        int totalTicksNeeded = ATTACK_DASH_TICKS + calculatedAnimationTicks + ANIMATION_OFFSET_TICKS;
+        // Calculate total ticks needed: teleport time (0.1s) + animation duration + offset (0.2s)
+        int totalTicksNeeded = TELEPORT_DELAY_TICKS + calculatedAnimationTicks + ANIMATION_OFFSET_TICKS;
         
         // Teleport back after animation completes + offset
         if (attackAnimationTicks >= totalTicksNeeded) {
