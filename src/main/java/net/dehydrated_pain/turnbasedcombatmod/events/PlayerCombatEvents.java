@@ -170,13 +170,16 @@ public class PlayerCombatEvents {
     }
 
     /**
-     * Disable all knockback on the player in the combat dimension
+     * Disable all knockback in the combat dimension (for player and enemies)
      */
     @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onPlayerKnockback(LivingKnockBackEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+    public static void onKnockbackInCombat(LivingKnockBackEvent event) {
+        if (event.getEntity().level().isClientSide()) return;
         
-        if (inCombatDimension(player)) {
+        ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION,
+                ResourceLocation.fromNamespaceAndPath(MODID, "combatdim"));
+        
+        if (event.getEntity().level().dimension().equals(dimKey)) {
             event.setCanceled(true);
         }
     }

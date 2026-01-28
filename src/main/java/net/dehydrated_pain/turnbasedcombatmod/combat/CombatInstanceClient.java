@@ -1,7 +1,6 @@
 package net.dehydrated_pain.turnbasedcombatmod.combat;
 
 import net.dehydrated_pain.turnbasedcombatmod.network.*;
-import net.dehydrated_pain.turnbasedcombatmod.turnbasedcombatanimations.AnimationMappings;
 import net.dehydrated_pain.turnbasedcombatmod.utils.playerturn.EnemyInfo;
 import net.dehydrated_pain.turnbasedcombatmod.ui.CombatUIConfig;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
@@ -32,12 +31,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.lwjgl.glfw.GLFW;
-import yesman.epicfight.api.animation.AnimationManager;
-import yesman.epicfight.api.animation.types.AttackAnimation;
-import yesman.epicfight.api.animation.types.StaticAnimation;
-import yesman.epicfight.gameasset.Animations;
-import yesman.epicfight.world.capabilities.EpicFightCapabilities;
-import yesman.epicfight.world.capabilities.entitypatch.player.PlayerPatch;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -317,78 +310,6 @@ public class CombatInstanceClient {
                     context.disconnect(Component.literal("Failed to handle player turn: " + e.getMessage()));
                     return null;
                 });
-    }
-    // TODO: create a handler for abilities, where the network handler transfeers also the skill number and if it is a skill
-    public static void triggerEpicFightAttack(Player player) {
-        PlayerPatch patch = EpicFightCapabilities.getEntityPatch(player, PlayerPatch.class);
-        Item heldItem = player.getMainHandItem().getItem();
-                                                                                                                                                                                                                                
-        if (patch != null) {
-            patch.playAnimationInstantly(AnimationMappings.animationMappings.get(heldItem).animation());
-        }
-    }
-
-    public static void triggerEpicFightSkill(Player player, String ability) {
-        PlayerPatch patch = EpicFightCapabilities.getEntityPatch(player, PlayerPatch.class);
-        Item heldItem = player.getMainHandItem().getItem();
-        
-        if (patch != null) {
-            AnimationMappings.WeaponAnimationSet weaponSet = AnimationMappings.animationMappings.get(heldItem);
-            if (weaponSet != null) {
-                AnimationManager.AnimationAccessor<? extends AttackAnimation> skillAnimation = weaponSet.skills().get(ability);
-                if (skillAnimation != null) {
-                    patch.playAnimationInstantly(skillAnimation);
-                }
-            }
-        }
-    }
-
-    public static void triggerEpicFightAttackNetworkHandler(final TriggerEpicFightAttackPacket pkt, final IPayloadContext context) {
-        // Main thread work
-        context.enqueueWork(() -> {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player != null) {
-                if (pkt.isSkill()) {
-                    triggerEpicFightSkill(mc.player, pkt.skill());
-                } else {
-                    triggerEpicFightAttack(mc.player);
-                }
-            }
-        });
-    }
-
-    public static void triggerParryAnimationNetworkHandler(final TriggerParryAnimationPacket pkt, final IPayloadContext context) {
-        context.enqueueWork(() -> {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.player != null) {
-                triggerParryAnimation(mc.player, pkt.parryType());
-            }
-        });
-    }
-    
-    /**
-     * Trigger the appropriate parry animation based on the parry type
-     */
-    private static void triggerParryAnimation(Player player, ParryTypes parryType) {
-        PlayerPatch patch = EpicFightCapabilities.getEntityPatch(player, PlayerPatch.class);
-        Item heldItem = player.getMainHandItem().getItem();
-        
-        if (patch == null) return;
-        
-        AnimationMappings.WeaponAnimationSet weaponSet = AnimationMappings.animationMappings.get(heldItem);
-        if (weaponSet == null) return;
-        
-        AnimationManager.AnimationAccessor<? extends StaticAnimation> parryAnimation = null;
-        
-        switch (parryType) {
-            case PARRY -> parryAnimation = weaponSet.parry();
-            case JUMP -> parryAnimation = weaponSet.parryJump();
-            case CROUCH -> parryAnimation = weaponSet.parryShift();
-        }
-        
-        if (parryAnimation != null) {
-            patch.playAnimationInstantly(parryAnimation);
-        }
     }
 
     public static void qteRequesteNetworkHandler(final QTERequestPacket pkt, final IPayloadContext context) {

@@ -41,18 +41,6 @@ public class NetworkHandler {
                 CombatInstanceClient::qteRequesteNetworkHandler
         );
 
-        registrar.playToClient(
-                TriggerEpicFightAttackPacket.TYPE,
-                TriggerEpicFightAttackPacket.STREAM_CODEC,
-                CombatInstanceClient::triggerEpicFightAttackNetworkHandler
-        );
-
-        registrar.playToClient(
-                TriggerParryAnimationPacket.TYPE,
-                TriggerParryAnimationPacket.STREAM_CODEC,
-                CombatInstanceClient::triggerParryAnimationNetworkHandler
-        );
-
         // client to server
         registrar.playToServer(
                 QTEResponsePacket.TYPE,

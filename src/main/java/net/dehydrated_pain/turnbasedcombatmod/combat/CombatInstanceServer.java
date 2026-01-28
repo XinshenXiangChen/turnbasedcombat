@@ -6,6 +6,7 @@ import net.dehydrated_pain.turnbasedcombatmod.structuregen.StructurePlacer;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.SkillInfo;
 import net.dehydrated_pain.turnbasedcombatmod.turnbasedcombatanimations.AnimationMappings;
+import net.minecraft.world.entity.LivingEntity;
 import yesman.epicfight.api.animation.AnimationManager;
 import yesman.epicfight.api.animation.types.AttackAnimation;
 import net.minecraft.client.CameraType;
@@ -73,7 +74,7 @@ public class CombatInstanceServer {
     private int pendingDamageTicks = 0;
     private static final int PARRY_RESPONSE_TIMEOUT_TICKS = 40; // 2 seconds at 20 TPS
     private ParryTypes pendingParryType = null; // Store the type of parry requested for animation
-    // Flag to prevent event handler from canceling damage when we're intentionally applying pending damage
+
     private boolean isApplyingPendingDamage = false;
 
     // Delay after each attack before next turn (in ticks, 20 ticks = 1 second)
@@ -90,11 +91,25 @@ public class CombatInstanceServer {
     // battle stuff
     private final BlockPos PLAYER_SPAWN_POS = new BlockPos(0, 1, -7);
     private final BlockPos FIRST_ENEMY_SPAWN_POS = new BlockPos(0, 1, 0);
+    private int battlefieldSpawnY = 1;  // Calculated Y height for player spawn (highest block in battlefield)
     private Map<UUID, BlockPos> enemOnBattleOriginalPos = new HashMap<>();
     private Queue<UUID> battleQueue = new LinkedList<>();
     Entity currentBattleEntity;
     boolean entityTurnFinished = true;
     boolean hasSentPlayerTurnPacket = false;
+
+     // Attack/Skill animation state
+    private boolean isPerformingAttackAnimation = false;
+    private boolean isSkillAnimation = false;
+    private String animationSkillName = "";
+    private int attackAnimationTicks = 0;
+    private int calculatedAnimationTicks = 0;  // Calculated from Epic Fight animation duration
+    private static final int TELEPORT_DELAY_TICKS = 10;   // Time to teleport to enemy (0.5 seconds = 10 ticks)
+    private static final int ANIMATION_OFFSET_TICKS = 4; // Additional offset/delay after animation completes (0.2 seconds = 4 ticks)
+    private double combatPosX, combatPosY, combatPosZ;   // Player's position in combat before attack
+    private float combatYaw, combatPitch;
+    private Entity attackTarget = null;
+    
 
     public CombatInstanceServer(ServerPlayer _player, List<Mob> _enemies, Entity firstAttacker, Biome biome) {
 
@@ -178,8 +193,8 @@ public class CombatInstanceServer {
                 }
                 // Wait for player to attack (EndPlayerTurnPacket will finish the turn)
             } else {
-                // Enable attack for enemy - always reset state to ensure they can attack
-                if (currentBattleEntity instanceof Mob mob) {
+
+                if (currentBattleEntity instanceof Mob mob && !waitingForParryAnimation) {
                     enemyAttack(currentBattleEntity);
                 }
             }
@@ -225,7 +240,6 @@ public class CombatInstanceServer {
         
         enemyMob.setNoAi(false);
         enemyMob.setTarget(player);
-        LOGGER.info("Enabled AI for enemy {} to attack player", enemy.getName().getString());
     }
 
     /**
@@ -546,6 +560,9 @@ public class CombatInstanceServer {
         int playerZ = PLAYER_SPAWN_POS.getZ();
         int playerY = findHighestBlock(targetLevel, playerX, playerZ);
         
+        // Store the calculated Y height for use in parry and attack teleports
+        battlefieldSpawnY = playerY;
+        
         LOGGER.info("Player spawn position: ({}, {}, {}) - highest block at Y={}", 
                 playerX, playerZ, playerY - 1, playerY);
         
@@ -685,10 +702,18 @@ public class CombatInstanceServer {
                     instance.hasPendingDamage = false;
                     instance.pendingDamageSource = null;
                     instance.pendingDamageAmount = 0.0f;
+
+                    if (instance.currentBattleEntity instanceof Mob mob) {
+                        mob.setTarget(null);
+                        mob.setNoAi(true);
+                        mob.setDeltaMovement(0, 0, 0);
+                        
+                        LOGGER.info("Disabled AI for {} during parry counter-attack", mob.getName().getString());
+                    }
                     
-                    // Send packet to client to play the parry animation
+                    // Play parry animation on server (handles hit detection and syncs to client)
                     if (instance.pendingParryType != null) {
-                        PacketDistributor.sendToPlayer(player, new TriggerParryAnimationPacket(instance.pendingParryType));
+                        instance.playParryAnimationOnServer(instance.pendingParryType);
                     }
                     instance.pendingParryType = null;
                     
@@ -795,18 +820,7 @@ public class CombatInstanceServer {
         return null;
     }
     
-    // Attack/Skill animation state
-    private boolean isPerformingAttackAnimation = false;
-    private boolean isSkillAnimation = false;
-    private String animationSkillName = "";
-    private int attackAnimationTicks = 0;
-    private int calculatedAnimationTicks = 0;  // Calculated from Epic Fight animation duration
-    private static final int TELEPORT_DELAY_TICKS = 2;    // Time to teleport to enemy (0.1 seconds = 2 ticks)
-    private static final int ANIMATION_OFFSET_TICKS = 4; // Additional offset/delay after animation completes (0.2 seconds = 4 ticks)
-    private double combatPosX, combatPosY, combatPosZ;   // Player's position in combat before attack
-    private float combatYaw, combatPitch;
-    private Entity attackTarget = null;
-    
+   
     /**
      * Get the animation duration in ticks from Epic Fight animation.
      * @param isSkill Whether this is a skill animation
@@ -841,7 +855,6 @@ public class CombatInstanceServer {
             // Get the actual animation object from the accessor
             AttackAnimation animation = animationAccessor.get();
             if (animation != null) {
-                // Get total time in seconds and convert to ticks (20 ticks per second)
                 float totalTimeSeconds = animation.getTotalTime();
                 int totalTicks = Math.round(totalTimeSeconds * 20.0f);
                 LOGGER.info("Animation duration: {} seconds ({} ticks) for {} {}", 
@@ -905,25 +918,22 @@ public class CombatInstanceServer {
         
         attackAnimationTicks++;
         
-        // At TELEPORT_DELAY_TICKS, deal damage and trigger animation
+        // At TELEPORT_DELAY_TICKS, trigger the attack animation
         if (attackAnimationTicks == TELEPORT_DELAY_TICKS) {
-            if (isSkillAnimation) {
- 
-                PacketDistributor.sendToPlayer(player, new net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket(true, animationSkillName));
-
-            } else {
-                
-                PacketDistributor.sendToPlayer(player, new net.dehydrated_pain.turnbasedcombatmod.network.TriggerEpicFightAttackPacket(false, ""));
-
+            // Reset enemy invulnerability to ensure hit registers
+            if (attackTarget instanceof LivingEntity livingTarget) {
+                livingTarget.invulnerableTime = 0;
+                livingTarget.hurtTime = 0;
             }
+            
+            // Play attack animation on server (handles hit detection and syncs to client)
+            playAttackAnimationOnServer(isSkillAnimation, animationSkillName);
         }
         
-        // Calculate total ticks needed: teleport time (0.1s) + animation duration + offset (0.2s)
         int totalTicksNeeded = TELEPORT_DELAY_TICKS + calculatedAnimationTicks + ANIMATION_OFFSET_TICKS;
         
-        // Teleport back after animation completes + offset
         if (attackAnimationTicks >= totalTicksNeeded) {
-            player.teleportTo(combatPosX, combatPosY, combatPosZ);
+            player.teleportTo(combatPosX, battlefieldSpawnY, combatPosZ);
             
             isPerformingAttackAnimation = false;
             isSkillAnimation = false;
@@ -931,8 +941,53 @@ public class CombatInstanceServer {
             attackAnimationTicks = 0;
             calculatedAnimationTicks = 0;
             attackTarget = null;
-            LOGGER.info("Player returned to original position after {} ticks (animation: {} ticks)", 
-                totalTicksNeeded, calculatedAnimationTicks);
+        }
+    }
+    
+    /**
+     * Play attack animation on server-side PlayerPatch.
+     * This is required for Epic Fight's hit detection to work properly.
+     */
+    private void playAttackAnimationOnServer(boolean isSkill, String skillName) {
+        var serverPatch = yesman.epicfight.world.capabilities.EpicFightCapabilities.getEntityPatch(
+                player, yesman.epicfight.world.capabilities.entitypatch.player.ServerPlayerPatch.class);
+        
+        if (serverPatch == null) return;
+        
+        var weaponSet = AnimationMappings.animationMappings.get(player.getMainHandItem().getItem());
+        if (weaponSet == null) return;
+        
+        if (isSkill) {
+            var skillAnim = weaponSet.skills().get(skillName);
+            if (skillAnim != null) {
+                serverPatch.playAnimationSynchronized(skillAnim, 0);
+            }
+        } else {
+            serverPatch.playAnimationSynchronized(weaponSet.animation(), 0);
+        }
+    }
+    
+    /**
+     * Play parry animation on server-side PlayerPatch.
+     * This is required for Epic Fight's hit detection to work properly.
+     */
+    private void playParryAnimationOnServer(ParryTypes parryType) {
+        var serverPatch = yesman.epicfight.world.capabilities.EpicFightCapabilities.getEntityPatch(
+                player, yesman.epicfight.world.capabilities.entitypatch.player.ServerPlayerPatch.class);
+        
+        if (serverPatch == null) return;
+        
+        var weaponSet = AnimationMappings.animationMappings.get(player.getMainHandItem().getItem());
+        if (weaponSet == null) return;
+        
+        var parryAnimation = switch (parryType) {
+            case PARRY -> weaponSet.parry();
+            case JUMP -> weaponSet.parryJump();
+            case CROUCH -> weaponSet.parryShift();
+        };
+        
+        if (parryAnimation != null) {
+            serverPatch.playAnimationSynchronized(parryAnimation, 0);
         }
     }
     
@@ -948,9 +1003,9 @@ public class CombatInstanceServer {
         if (parryAnimationDelayCounter <= 0) {
             // Delay complete - teleport player back to spawn position
             if (player != null && player.isAlive()) {
-                player.teleportTo(PLAYER_SPAWN_POS.getX(), PLAYER_SPAWN_POS.getY(), PLAYER_SPAWN_POS.getZ());
+                player.teleportTo(PLAYER_SPAWN_POS.getX(), battlefieldSpawnY, PLAYER_SPAWN_POS.getZ());
             }
-            
+
             // Now finish the enemy turn (teleport enemy back)
             waitingForParryAnimation = false;
             parryAnimationDelayCounter = 0;
