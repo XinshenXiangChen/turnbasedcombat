@@ -13,12 +13,9 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.CalculateDetachedCameraDistanceEvent;
@@ -32,13 +29,9 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.lwjgl.glfw.GLFW;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
-import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.LOGGER;
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
 
 
@@ -287,9 +280,7 @@ public class CombatInstanceClient {
     
     public static void endCombatNetworkHandler(final EndCombatPacket pkt, final IPayloadContext context) {
         // Main thread work
-        context.enqueueWork(() -> {
-                    endCombat();
-                })
+        context.enqueueWork(CombatInstanceClient::endCombat)
                 .exceptionally(e -> {
                     // Handle exception, optional
                     context.disconnect(Component.literal("Failed to end combat: " + e.getMessage()));
@@ -413,17 +404,15 @@ public class CombatInstanceClient {
             }
             
             // If in QTE, handle the QTE response
-            if (qteActive && !parried) {
+            if (!parried) {
                 ParryTypes requiredType = activeParryType;
                 if (requiredType == null) return;
                 
                 String requiredAction = requiredType.getActionName();
                 
                 boolean isValidKey = false;
-                
-                if (isParry == null) {
-                    return;
-                } else if (!isParry) {
+
+                if (!isParry) {
                     isValidKey = true;
                 } else {
                     isValidKey = isKeyForAction(key, requiredAction);
@@ -467,7 +456,7 @@ public class CombatInstanceClient {
         if (actionName.equalsIgnoreCase("SHIFT") && (key == GLFW.GLFW_KEY_LEFT_SHIFT || key == GLFW.GLFW_KEY_RIGHT_SHIFT)) return true;
         if (actionName.equalsIgnoreCase("jump") && key == GLFW.GLFW_KEY_SPACE) return true;
         if (actionName.equalsIgnoreCase("Q") && key == GLFW.GLFW_KEY_Q) return true;
-        
+
         return false;
     }
     

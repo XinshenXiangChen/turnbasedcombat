@@ -42,7 +42,7 @@ import java.util.stream.Collectors;
 
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.LOGGER;
 import static net.dehydrated_pain.turnbasedcombatmod.TurnBasedCombatMod.MODID;
-import static net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE;
+
 
 @EventBusSubscriber(modid = MODID)
 public class CombatInstanceServer {
@@ -61,9 +61,9 @@ public class CombatInstanceServer {
     private float originalYRot, originalXRot;
 
     // Store enemy original positions, levels, and rotations
-    private Map<UUID, ServerLevel> enemyOriginalLevels = new HashMap<>();
-    private Map<UUID, BlockPos> enemyOriginalPositions = new HashMap<>(); // [x, y, z]
-    private Map<UUID, Vec2> enemyOriginalRot = new HashMap<>();
+    private final Map<UUID, ServerLevel> enemyOriginalLevels = new HashMap<>();
+    private final Map<UUID, BlockPos> enemyOriginalPositions = new HashMap<>(); // [x, y, z]
+    private final Map<UUID, Vec2> enemyOriginalRot = new HashMap<>();
 
     public boolean sucessfullParry = false;
     
@@ -91,9 +91,9 @@ public class CombatInstanceServer {
     // battle stuff
     private final BlockPos PLAYER_SPAWN_POS = new BlockPos(0, 1, -7);
     private final BlockPos FIRST_ENEMY_SPAWN_POS = new BlockPos(0, 1, 0);
+    private final Map<UUID, BlockPos> enemOnBattleOriginalPos = new HashMap<>();
+    private final Queue<UUID> battleQueue = new LinkedList<>();
     private int battlefieldSpawnY = 1;  // Calculated Y height for player spawn (highest block in battlefield)
-    private Map<UUID, BlockPos> enemOnBattleOriginalPos = new HashMap<>();
-    private Queue<UUID> battleQueue = new LinkedList<>();
     Entity currentBattleEntity;
     boolean entityTurnFinished = true;
     boolean hasSentPlayerTurnPacket = false;
@@ -118,7 +118,7 @@ public class CombatInstanceServer {
         ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath(MODID, "combatdim"));
 
-        combatServerLevel = player.getServer().getLevel(dimKey);
+        combatServerLevel = Objects.requireNonNull(player.getServer()).getLevel(dimKey);
         enemies = _enemies;
         // Store UUIDs for reliable entity lookup
         enemyUUIDs = _enemies.stream()
@@ -155,6 +155,7 @@ public class CombatInstanceServer {
     
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
+
         // Run turnBasedCombat() every tick for all active combat instances
         activeCombatInstances.values().forEach(CombatInstanceServer::turnBasedCombat);
         // Process attack animations
@@ -215,11 +216,7 @@ public class CombatInstanceServer {
         }
 
     }
-    private void playerAttack() {
-        LOGGER.info("playerturn");
-        // Don't finish turn immediately - wait for player to attack
-        // The turn will finish when EndPlayerTurnPacket is received
-    }
+
 
 
     private void enemyAttack(Entity enemy) {
@@ -357,7 +354,7 @@ public class CombatInstanceServer {
         }
         
         // If player died, teleport back and restore ai
-        if (playerDied && enemyOriginalLevels != null && enemyOriginalPositions != null) {
+        if (playerDied) {
             for (UUID enemyUUID : enemyUUIDs) {
                 Entity enemy = combatServerLevel.getEntity(enemyUUID);
                 if (enemy != null && enemy.isAlive()) {
@@ -685,7 +682,6 @@ public class CombatInstanceServer {
         boolean success = pkt.success();
         boolean isParry = pkt.isParry();
         ServerPlayer player = (ServerPlayer) context.player();
-        if (player == null) return;
 
         CombatInstanceServer instance = getCombatInstance(player.getUUID());
         if (instance != null) {
@@ -749,7 +745,6 @@ public class CombatInstanceServer {
     public static void endPlayerTurnNetworkHandler(final EndPlayerTurnPacket pkt, final IPayloadContext context) {
         context.enqueueWork(() -> {
             ServerPlayer player = (ServerPlayer) context.player();
-            if (player == null) return;
 
             CombatInstanceServer instance = getCombatInstance(player.getUUID());
             if (instance != null) {
