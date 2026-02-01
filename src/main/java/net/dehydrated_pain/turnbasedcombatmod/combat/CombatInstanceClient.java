@@ -7,6 +7,7 @@ import net.dehydrated_pain.turnbasedcombatmod.utils.combat.ParryTypes;
 import net.dehydrated_pain.turnbasedcombatmod.utils.combat.SkillInfo;
 import net.minecraft.client.Camera;
 import net.minecraft.client.CameraType;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -50,13 +51,13 @@ public class CombatInstanceClient {
     public static int selectedEnemyIndex = 0;
     
     // Ability selection state
-    private static int selectedAbilityIndex = 0;
+    public static int selectedAbilityIndex = 0;
     private static final String[] ABILITIES = {"Attack", "Skill", "Item"};  // U, I, O
     
     // Skills list for current weapon
     public static List<SkillInfo> skillsList = new ArrayList<>();
-    private static int selectedSkillIndex = 0;
-    private static String selectedSkillName = null;
+    public static int selectedSkillIndex = 0;
+    public static String selectedSkillName = null;
     
     // Camera settings for ABILITY selection (behind player, offset right)
     private static final double ABILITY_CAMERA_DISTANCE = -2.7;  // Distance behind player
@@ -73,23 +74,29 @@ public class CombatInstanceClient {
     private static final int ABILITY_BAR_HEIGHT = 15;
     private static final int ABILITY_BAR_X_OFFSET = -10;  // Offset from center of screen
     private static final int ABILITY_BUTTON_SPACING = 25; // barHeight + 10
-    private static final String[] KEY_LABELS = {"[U]", "[I]", "[O]"};
+    
+    /**
+     * Gets the key binding display name for a key mapping.
+     */
+    private static String getKeyLabel(KeyMapping keyMapping) {
+        return "[" + keyMapping.getTranslatedKeyMessage().getString() + "]";
+    }
 
 
     // Each client only handles their own player, so static is safe here
-    private static final double PARRY_TIMEOUT_TIME = 0.15;
-    private static final double DODGE_TIMEOUT_TIME = 0.2;
-    private static double reactionTimer = 0.0;
-    private static boolean parried = false;
-    private static boolean qteActive = false;
-    private static ParryTypes activeParryType = null;
-    private static long qteStartTime = 0;
+    public static final double PARRY_TIMEOUT_TIME = 0.15;
+    public static final double DODGE_TIMEOUT_TIME = 0.2;
+    public static double reactionTimer = 0.0;
+    public static boolean parried = false;
+    public static boolean qteActive = false;
+    public static ParryTypes activeParryType = null;
+    public static long qteStartTime = 0;
 
 
     // Shared cooldown for both parry and dodge
-    private static double DEFENSE_COOLDOWN_TIME = 1;
-    private static double defenseCooldownTime = 0;
-    private static boolean defenseOnCooldown = false;
+    public static final double DEFENSE_COOLDOWN_TIME = 1;
+    public static double defenseCooldownTime = 0;
+    public static boolean defenseOnCooldown = false;
 
 
 
@@ -329,15 +336,13 @@ public class CombatInstanceClient {
         
         if (event.getAction() != GLFW.GLFW_PRESS) return;
         
-        int key = event.getKey();
-        
-        // Step 1: Ability selection with U, I, O keys
+        // Step 1: Ability selection
         if (isSelectingAbility) {
-            if (key == GLFW.GLFW_KEY_U) {
+            if (ClientKeyMappings.ABILITY_ATTACK.matches(event.getKey(), 0)) {
                 selectedAbilityIndex = 0;  // Top - Attack
                 confirmAbilitySelection();
                 return;
-            } else if (key == GLFW.GLFW_KEY_I) {
+            } else if (ClientKeyMappings.ABILITY_SKILL.matches(event.getKey(), 0)) {
                 selectedAbilityIndex = 1;  // Middle - Skill
                 // Check if skills are available for the current weapon
                 if (!skillsList.isEmpty()) {
@@ -348,43 +353,43 @@ public class CombatInstanceClient {
                 }
                 // If no skills available, do nothing (don't proceed to enemy selection)
                 return;
-            } else if (key == GLFW.GLFW_KEY_O) {
+            } else if (ClientKeyMappings.ABILITY_ITEM.matches(event.getKey(), 0)) {
                 selectedAbilityIndex = 2;  // Bottom - Item
                 confirmAbilitySelection();
                 return;
             }
         }
         
-        // Skill selection with U, I, O keys (for up to 3 skills)
+        // Skill selection
         if (isSelectingSkill) {
             int skillCount = Math.min(skillsList.size(), 3);
-            if (key == GLFW.GLFW_KEY_Z && skillCount > 0) {
+            if (ClientKeyMappings.SKILL_1.matches(event.getKey(), 0) && skillCount > 0) {
                 selectedSkillIndex = 0;
                 confirmSkillSelection();
                 return;
-            } else if (key == GLFW.GLFW_KEY_X && skillCount > 1) {
+            } else if (ClientKeyMappings.SKILL_2.matches(event.getKey(), 0) && skillCount > 1) {
                 selectedSkillIndex = 1;
                 confirmSkillSelection();
                 return;
-            } else if (key == GLFW.GLFW_KEY_C && skillCount > 2) {
+            } else if (ClientKeyMappings.SKILL_3.matches(event.getKey(), 0) && skillCount > 2) {
                 selectedSkillIndex = 2;
                 confirmSkillSelection();
                 return;
             }
         }
         
-        // Step 2: Enemy selection with M, N keys
+        // Step 2: Enemy selection
         if (isSelectingEnemy) {
-            if (key == GLFW.GLFW_KEY_M) {
+            if (ClientKeyMappings.ENEMY_PREVIOUS.matches(event.getKey(), 0)) {
                 selectPreviousEnemy();
                 return;
-            } else if (key == GLFW.GLFW_KEY_N) {
+            } else if (ClientKeyMappings.ENEMY_NEXT.matches(event.getKey(), 0)) {
                 selectNextEnemy();
                 return;
             }
         }
         
-        Boolean isParry = getReactionTypeForKey(key);
+        Boolean isParry = getReactionTypeForKey(event);
         
         // If it's a parry/dodge key, check if we should trigger cooldown
         if (isParry != null) {
@@ -415,7 +420,7 @@ public class CombatInstanceClient {
                 if (!isParry) {
                     isValidKey = true;
                 } else {
-                    isValidKey = isKeyForAction(key, requiredAction);
+                    isValidKey = isKeyForAction(event, requiredAction);
                 }
                 
                 if (isValidKey) {
@@ -431,31 +436,46 @@ public class CombatInstanceClient {
         }
     }
 
-    private static Boolean getReactionTypeForKey(int key) {
-
-        if (key == GLFW.GLFW_KEY_E || 
-            key == GLFW.GLFW_KEY_LEFT_SHIFT || 
-            key == GLFW.GLFW_KEY_RIGHT_SHIFT || 
-            key == GLFW.GLFW_KEY_SPACE) {
-            return true;
+    /**
+     * Determines if the pressed key is a parry (true) or dodge (false) key.
+     * Returns null if it's not a defense key.
+     */
+    private static Boolean getReactionTypeForKey(InputEvent.Key event) {
+        int key = event.getKey();
+        
+        // Check parry keys using key mappings
+        if (ClientKeyMappings.PARRY_E.matches(key, 0) ||
+            ClientKeyMappings.PARRY_SHIFT.matches(key, 0) ||
+            ClientKeyMappings.PARRY_SPACE.matches(key, 0)) {
+            return true; // Parry
         }
         
-        // Dodge keys
-        if (key == GLFW.GLFW_KEY_Q) {
-            return false;
+        // Check dodge keys
+        if (ClientKeyMappings.DODGE_Q.matches(key, 0)) {
+            return false; // Dodge
         }
         
         return null; // Not a defensive reaction key
     }
     
     /**
-     * Checks if the pressed key matches the required action name
+     * Checks if the pressed key matches the required action name using key mappings.
      */
-    private static boolean isKeyForAction(int key, String actionName) {
-        if (actionName.equalsIgnoreCase("E") && key == GLFW.GLFW_KEY_E) return true;
-        if (actionName.equalsIgnoreCase("SHIFT") && (key == GLFW.GLFW_KEY_LEFT_SHIFT || key == GLFW.GLFW_KEY_RIGHT_SHIFT)) return true;
-        if (actionName.equalsIgnoreCase("jump") && key == GLFW.GLFW_KEY_SPACE) return true;
-        if (actionName.equalsIgnoreCase("Q") && key == GLFW.GLFW_KEY_Q) return true;
+    private static boolean isKeyForAction(InputEvent.Key event, String actionName) {
+        int key = event.getKey();
+        
+        if (actionName.equalsIgnoreCase("E") && ClientKeyMappings.PARRY_E.matches(key, 0)) {
+            return true;
+        }
+        if (actionName.equalsIgnoreCase("SHIFT") && ClientKeyMappings.PARRY_SHIFT.matches(key, 0)) {
+            return true;
+        }
+        if (actionName.equalsIgnoreCase("jump") && ClientKeyMappings.PARRY_SPACE.matches(key, 0)) {
+            return true;
+        }
+        if (actionName.equalsIgnoreCase("Q") && ClientKeyMappings.DODGE_Q.matches(key, 0)) {
+            return true;
+        }
 
         return false;
     }
@@ -591,7 +611,10 @@ public class CombatInstanceClient {
         
         // Step 2: Enemy selection UI
         if (isSelectingEnemy && !enemyInfoList.isEmpty()) {
-            String selectionText = "Select Enemy: " + (selectedEnemyIndex + 1) + "/" + enemyInfoList.size() + " [M] <- -> [N] | Right-click to confirm";
+            String prevKey = getKeyLabel(ClientKeyMappings.ENEMY_PREVIOUS);
+            String nextKey = getKeyLabel(ClientKeyMappings.ENEMY_NEXT);
+            String selectionText = "Select Enemy: " + (selectedEnemyIndex + 1) + "/" + enemyInfoList.size() + 
+                " " + prevKey + " <- -> " + nextKey + " | Right-click to confirm";
             int textWidth = mc.font.width(selectionText);
             guiGraphics.drawString(mc.font, selectionText, (screenWidth - textWidth) / 2, screenHeight - 40, 0xFFFFFFFF);
         }
@@ -604,12 +627,19 @@ public class CombatInstanceClient {
         int barX = screenWidth / 2 + ABILITY_BAR_X_OFFSET;
         int startY = (screenHeight - (ABILITY_BAR_HEIGHT * 3 + 20)) / 2;
         
+        // Key mappings for abilities
+        KeyMapping[] abilityKeys = {
+            ClientKeyMappings.ABILITY_ATTACK,
+            ClientKeyMappings.ABILITY_SKILL,
+            ClientKeyMappings.ABILITY_ITEM
+        };
+        
         for (int i = 0; i < ABILITIES.length; i++) {
             int barY = startY + i * ABILITY_BUTTON_SPACING;
             
             guiGraphics.blit(config.image, barX, barY, ABILITY_BAR_WIDTH, ABILITY_BAR_HEIGHT, 0, 0, config.width, config.height, config.width, config.height);
             
-            String label = KEY_LABELS[i] + " " + ABILITIES[i];
+            String label = getKeyLabel(abilityKeys[i]) + " " + ABILITIES[i];
             int labelX = barX + 8;
             int labelY = barY + (ABILITY_BAR_HEIGHT - 8) / 2;
             guiGraphics.drawString(mc.font, label, labelX, labelY, 0xFFFFFFFF);
@@ -624,13 +654,20 @@ public class CombatInstanceClient {
         int skillCount = Math.min(skillsList.size(), 3); // Show up to 3 skills
         int startY = (screenHeight - (ABILITY_BAR_HEIGHT * skillCount + 20)) / 2;
         
+        // Key mappings for skills
+        KeyMapping[] skillKeys = {
+            ClientKeyMappings.SKILL_1,
+            ClientKeyMappings.SKILL_2,
+            ClientKeyMappings.SKILL_3
+        };
+        
         for (int i = 0; i < skillCount; i++) {
             int barY = startY + i * ABILITY_BUTTON_SPACING;
             
             guiGraphics.blit(config.image, barX, barY, ABILITY_BAR_WIDTH, ABILITY_BAR_HEIGHT, 0, 0, config.width, config.height, config.width, config.height);
             
             String skillName = skillsList.get(i).skillName();
-            String label = KEY_LABELS[i] + " " + skillName;
+            String label = getKeyLabel(skillKeys[i]) + " " + skillName;
             int labelX = barX + 8;
             int labelY = barY + (ABILITY_BAR_HEIGHT - 8) / 2;
             guiGraphics.drawString(mc.font, label, labelX, labelY, 0xFFFFFFFF);
