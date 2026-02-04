@@ -21,7 +21,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.RelativeMovement;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
@@ -355,6 +357,12 @@ public class CombatInstanceServer {
 
     private void endCombatEnvironment() {
         boolean playerDied = isPlayerDead();
+        boolean playerWon = !playerDied && areAllEnemiesDead();
+        
+        // If player won, collect dropped items BEFORE resetting chunks
+        if (playerWon && player != null && combatServerLevel != null && originalLevel != null) {
+            transferEnemyDropsToPlayer();
+        }
         
         // Teleport player back to original position and dimension (if alive)
         if (player != null && originalLevel != null && !playerDied) {
@@ -413,6 +421,88 @@ public class CombatInstanceServer {
         if (player != null) {
             activeCombatInstances.remove(player.getUUID());
         }
+    }
+    
+    /**
+     * Collects all dropped items from enemies in the combat dimension and transfers them
+     * to the player's original position. Only called when the player wins.
+     * Must be called BEFORE resetChunks to avoid losing items.
+     */
+    private void transferEnemyDropsToPlayer() {
+        if (player == null || combatServerLevel == null || originalLevel == null) {
+            LOGGER.warn("Cannot transfer drops: player={}, combatLevel={}, originalLevel={}", 
+                player != null, combatServerLevel != null, originalLevel != null);
+            return;
+        }
+        
+        // Search for ALL item entities in the combat dimension
+        // Use a very large area to catch all items regardless of where enemies died
+        // Combat happens around (0, 1, 0) to (0, 1, -7), but items might be anywhere
+        AABB searchArea = new AABB(-50, -10, -50, 50, 50, 50);
+        List<ItemEntity> itemEntities = new ArrayList<>();
+        
+        // Get all item entities in the combat dimension
+        for (Entity entity : combatServerLevel.getAllEntities()) {
+            if (entity instanceof ItemEntity itemEntity) {
+                itemEntities.add(itemEntity);
+            }
+        }
+        
+        // Fallback: also try the search area method
+        if (itemEntities.isEmpty()) {
+            LOGGER.warn("No items found via getAllEntities, trying search area method");
+            itemEntities = combatServerLevel.getEntitiesOfClass(ItemEntity.class, searchArea);
+        }
+        
+        if (itemEntities.isEmpty()) {
+            LOGGER.warn("No dropped items found in combat dimension at all. Search area: {}", searchArea);
+            // Log all entities in the combat dimension for debugging
+            List<Entity> allEntities = combatServerLevel.getEntitiesOfClass(Entity.class, searchArea);
+            LOGGER.info("Found {} total entities in search area (not items)", allEntities.size());
+            for (Entity entity : allEntities) {
+                LOGGER.info("Entity: {} at ({}, {}, {})", entity.getClass().getSimpleName(), 
+                    entity.getX(), entity.getY(), entity.getZ());
+            }
+            return;
+        }
+        
+        LOGGER.info("Player won! Found {} dropped items, transferring to player position", itemEntities.size());
+        
+        int transferredCount = 0;
+        // Transfer each item to the player's original position
+        for (ItemEntity itemEntity : itemEntities) {
+            ItemStack itemStack = itemEntity.getItem();
+            if (itemStack.isEmpty()) {
+                LOGGER.warn("Found empty item stack, skipping");
+                continue;
+            }
+            
+            LOGGER.info("Transferring item: {} (count: {}) from ({}, {}, {}) to ({}, {}, {})",
+                itemStack.getDisplayName().getString(), itemStack.getCount(),
+                itemEntity.getX(), itemEntity.getY(), itemEntity.getZ(),
+                originalX, originalY + 1.0, originalZ);
+            
+            itemEntity.remove(Entity.RemovalReason.DISCARDED);
+            
+            ItemEntity newItemEntity = new ItemEntity(
+                originalLevel,
+                originalX, originalY + 1.0, originalZ,
+                itemStack
+            );
+            
+            // Add slight random velocity to spread items out
+            newItemEntity.setDeltaMovement(
+                (Math.random() - 0.5) * 0.2,
+                0.1 + Math.random() * 0.1,
+                (Math.random() - 0.5) * 0.2
+            );
+            
+            originalLevel.addFreshEntity(newItemEntity);
+            transferredCount++;
+        }
+        
+        LOGGER.info("Successfully transferred {} items to player position at ({}, {}, {})", 
+            transferredCount, originalX, originalY + 1.0, originalZ);
     }
 
     public static void removeCombatInstance(UUID playerUUID) {
