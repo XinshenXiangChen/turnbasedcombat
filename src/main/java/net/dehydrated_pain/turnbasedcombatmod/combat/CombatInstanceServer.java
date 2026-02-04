@@ -85,6 +85,11 @@ public class CombatInstanceServer {
     private static final int PARRY_ANIMATION_DELAY_TICKS = 20; // 1 second for parry animation
     private int parryAnimationDelayCounter = 0;
     private boolean waitingForParryAnimation = false;
+    
+    // Delay before final teleportation when combat ends (win or lose) (in ticks)
+    private static final int COMBAT_END_DELAY_TICKS = 60; // 3 seconds delay before teleporting back
+    private int combatEndDelayCounter = 0;
+    private boolean waitingForCombatEndDelay = false;
 
     private static final Integer ENEMY_SEPARATION = 3;
 
@@ -162,6 +167,8 @@ public class CombatInstanceServer {
         activeCombatInstances.values().forEach(CombatInstanceServer::processAttackAnimation);
         // Process parry animation delays
         activeCombatInstances.values().forEach(CombatInstanceServer::processParryAnimationDelay);
+        // Process combat end delay
+        activeCombatInstances.values().forEach(CombatInstanceServer::processCombatEndDelay);
         // Process pending damage timeouts
         activeCombatInstances.values().forEach(CombatInstanceServer::processPendingDamageTimeout);
         // Remove instances where combat has ended 
@@ -174,8 +181,17 @@ public class CombatInstanceServer {
     }
 
     public void turnBasedCombat() {
-        if (shouldEndCombat()) {
-            endCombatEnvironment();
+        // Check if combat should end, but wait for delay before teleporting
+        if (shouldEndCombat() && !waitingForCombatEndDelay) {
+            // Start the delay before ending combat
+            waitingForCombatEndDelay = true;
+            combatEndDelayCounter = COMBAT_END_DELAY_TICKS;
+            LOGGER.info("Combat ended - waiting {} ticks before teleporting back", COMBAT_END_DELAY_TICKS);
+            return;
+        }
+        
+        // If waiting for delay, don't process turns
+        if (waitingForCombatEndDelay) {
             return;
         }
 
@@ -909,6 +925,8 @@ public class CombatInstanceServer {
      * Uses Epic Fight animation duration + offset to determine when to return.
      */
     private void processAttackAnimation() {
+        // Don't process attack animations if waiting for combat to end
+        if (waitingForCombatEndDelay) return;
         if (!isPerformingAttackAnimation || attackTarget == null) return;
         
         attackAnimationTicks++;
@@ -1006,6 +1024,22 @@ public class CombatInstanceServer {
             parryAnimationDelayCounter = 0;
             LOGGER.info("Parry animation delay complete - finishing enemy turn");
             finishEnemyTurn();
+        }
+    }
+    
+    /**
+     * Process combat end delay - waits before teleporting player back after combat ends (win or lose).
+     */
+    private void processCombatEndDelay() {
+        if (!waitingForCombatEndDelay) return;
+        
+        combatEndDelayCounter--;
+        
+        if (combatEndDelayCounter <= 0) {
+            waitingForCombatEndDelay = false;
+            combatEndDelayCounter = 0;
+            LOGGER.info("Combat end delay complete - teleporting player back");
+            endCombatEnvironment();
         }
     }
     
