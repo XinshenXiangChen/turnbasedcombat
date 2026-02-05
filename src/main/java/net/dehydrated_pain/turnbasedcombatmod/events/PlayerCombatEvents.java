@@ -11,17 +11,21 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.phys.AABB;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingKnockBackEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
 import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
+import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
@@ -169,6 +173,58 @@ public class PlayerCombatEvents {
         }
     }
 
+    /**
+     * Track mob drops when enemies die in combat dimension
+     */
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onEnemyDeath(LivingDeathEvent event) {
+        if (event.getEntity().level().isClientSide()) return;
+        if (!(event.getEntity() instanceof Mob mob)) return;
+        
+        ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION,
+                ResourceLocation.fromNamespaceAndPath(MODID, "combatdim"));
+        
+        if (!mob.level().dimension().equals(dimKey)) return;
+        
+        // Find the combat instance that contains this enemy
+        CombatInstanceServer instance = null;
+        for (CombatInstanceServer inst : CombatInstanceServer.getAllCombatInstances()) {
+            if (inst.isEnemy(mob.getUUID())) {
+                instance = inst;
+                break;
+            }
+        }
+
+        if (instance == null) return;
+        
+        final CombatInstanceServer combatInstance = instance;
+        double deathX = mob.getX();
+        double deathY = mob.getY();
+        double deathZ = mob.getZ();
+        
+        LOGGER.debug("Enemy {} died at ({}, {}, {}), tracking its drops", 
+            mob.getUUID(), deathX, deathY, deathZ);
+        
+
+        if (mob.level() instanceof ServerLevel serverLevel) {
+            serverLevel.getServer().execute(() -> {
+
+                AABB searchArea = new AABB(
+                    deathX - 3, deathY - 1, deathZ - 3,
+                    deathX + 3, deathY + 2, deathZ + 3
+                );
+                List<ItemEntity> nearbyItems = serverLevel.getEntitiesOfClass(ItemEntity.class, searchArea);
+                
+                for (ItemEntity itemEntity : nearbyItems) {
+                    combatInstance.trackEnemyDrop(itemEntity);
+                    LOGGER.debug("Tracked mob drop: {} at ({}, {}, {})", 
+                        itemEntity.getItem().getDisplayName().getString(),
+                        itemEntity.getX(), itemEntity.getY(), itemEntity.getZ());
+                }
+            });
+        }
+    }
+    
     /**
      * Disable all knockback in the combat dimension (for player and enemies)
      */

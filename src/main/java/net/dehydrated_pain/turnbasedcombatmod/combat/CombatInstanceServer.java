@@ -102,6 +102,11 @@ public class CombatInstanceServer {
     private final Queue<UUID> battleQueue = new LinkedList<>();
     private int battlefieldSpawnY = 1;  // Calculated Y height for player spawn (highest block in battlefield)
     Entity currentBattleEntity;
+    
+    // Track enemy drop item entities (UUIDs) to distinguish from block drops
+    private final Set<UUID> enemyDropItemUUIDs = new HashSet<>();
+    // Store the structure resource location for restoration
+    private ResourceLocation structureResourceLocation;
     boolean entityTurnFinished = true;
     boolean hasSentPlayerTurnPacket = false;
 
@@ -328,10 +333,13 @@ public class CombatInstanceServer {
         originalYRot = player.getYRot();
         originalXRot = player.getXRot();
 
+        // Clear any previously tracked drops
+        enemyDropItemUUIDs.clear();
+        
         // Place structure when entering combat dimension
         StructurePlacer sp = new StructurePlacer(biome, combatServerLevel);
         sp.place();
-        // Store original positions, levels, and rotations for all enemies
+
         for (Mob enemy: enemies) {
             if (enemy instanceof Mob mob) {
                 UUID enemyUUID = enemy.getUUID();
@@ -441,10 +449,13 @@ public class CombatInstanceServer {
         AABB searchArea = new AABB(-50, -10, -50, 50, 50, 50);
         List<ItemEntity> itemEntities = new ArrayList<>();
         
-        // Get all item entities in the combat dimension
+        // Get only tracked enemy drop item entities (exclude block drops)
         for (Entity entity : combatServerLevel.getAllEntities()) {
             if (entity instanceof ItemEntity itemEntity) {
-                itemEntities.add(itemEntity);
+                // Only include items that were tracked as enemy drops
+                if (enemyDropItemUUIDs.contains(itemEntity.getUUID())) {
+                    itemEntities.add(itemEntity);
+                }
             }
         }
         
@@ -517,10 +528,28 @@ public class CombatInstanceServer {
     }
     
     /**
+     * Get all active combat instances (for event handlers)
+     */
+    public static Collection<CombatInstanceServer> getAllCombatInstances() {
+        return activeCombatInstances.values();
+    }
+    
+    /**
      * Check if an entity is an enemy in this combat instance
      */
     public boolean isEnemy(UUID entityUUID) {
         return enemyUUIDs.contains(entityUUID);
+    }
+    
+    /**
+     * Tracks an item entity as an enemy drop (called when mob dies)
+     * @param itemEntity The item entity to track
+     */
+    public void trackEnemyDrop(ItemEntity itemEntity) {
+        if (itemEntity != null) {
+            enemyDropItemUUIDs.add(itemEntity.getUUID());
+            LOGGER.debug("Tracked enemy drop item: {} (UUID: {})", itemEntity.getItem().getDisplayName().getString(), itemEntity.getUUID());
+        }
     }
     
     /**
