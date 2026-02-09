@@ -9,6 +9,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -125,10 +126,11 @@ public class PlayerCombatEvents {
 
         event.setCanceled(true);
         
-        // TODO: get the attack type somehow probably register all possible attacks and their parry type
-        ParryTypes parryType = ParryTypes.JUMP; // Default for now
+        ParryTypes parryType = ParryTypes.values()[player.getRandom().nextInt(ParryTypes.values().length)];
         
         combatInstance.storePendingDamage(event.getSource(), event.getAmount(), parryType);
+        
+        player.sendSystemMessage(Component.literal("Parry! Press " + parryType.getActionName().toUpperCase()));
         
         LOGGER.info("Enemy attacked player, initiating parry QTE. Damage: {}, ParryType: {}", event.getAmount(), parryType);
 
